@@ -1,7 +1,7 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       CDF_File_Examples
+;       MrCDF_File_Examples
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2014, Matthew Argall                                                   ;
@@ -34,9 +34,21 @@
 ; PURPOSE:
 ;+
 ;   A program for demonstrating how to read, write, and copy information in CDF files
-;   using the CDF_File object.
+;   using the MrCDF_File object.
+;
+; :Author:
+;   Matthew Argall::
+;       University of New Hampshire
+;       Morse Hall, Room 113
+;       8 College Rd.
+;       Durham, NH, 03824
+;       matthew.argall@wildcats.unh.edu
+;
+; :History:
+;   Modification History::
+;       2014/03/07  -   Written by Matthew Argall
 ;-
-pro CDF_File_Examples
+pro MrCDF_File_Examples
     compile_opt strictarr
     
     ;Error handling
@@ -54,7 +66,7 @@ pro CDF_File_Examples
 ;-----------------------------------------------------
 ; Create a New File for Writing \\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-    fileObj = obj_new('CDF_File', '/Users/argall/Desktop/cdf_example.cdf', $
+    fileObj = obj_new('MrCDF_File', '/Users/argall/Desktop/cdf_example.cdf', $
                       /CREATE, /CLOBBER)
     if obj_valid(fileObj) eq 0 then $
         message, 'Unable to create CDF file.'
@@ -70,9 +82,9 @@ pro CDF_File_Examples
     ;
 
     ;Add the definition
-    fileObj -> WriteGlobalAttrDef, 'Title'
-    fileObj -> WriteGlobalAttrDef, 'Description'
-    fileObj -> WriteGlobalAttrDef, 'Created'
+    fileObj -> CreateAttr, 'Title'
+    fileObj -> CreateAttr, 'Description'
+    fileObj -> CreateAttr, 'Created'
     
     ;Write global attribute data
     fileObj -> WriteGlobalAttr, 'Title', 'CDF Example File'
@@ -128,26 +140,26 @@ pro CDF_File_Examples
     ; variable attribute to point to a time array with 24 records, we can associate one
     ; frame with each of the 24 times.
     ;
-    fileObj -> WriteVarDef, 'M51_Whilrpool_Galaxy', 'CDF_INT1', ['VARY', 'VARY'], $
+    fileObj -> CreateVar, 'M51_Whilrpool_Galaxy', 'CDF_INT1', ['VARY', 'VARY'], $
                             DIMENSIONS=[dims1[0], dims1[1]], /REC_NOVARY
-    fileObj -> WriteVarDef, 'Time', 'CDF_EPOCH', 'NOVARY', ALLOCATERECS=24
+    fileObj -> CreateVar, 'Time', 'CDF_EPOCH', 'NOVARY', ALLOCATERECS=24
 
     ;Write the data. This generates the following warning:
     ;   % CDF_VARPUT: Function completed but: VIRTUAL_RECORD_DATA: One or more of the records are virtual.
-    fileObj -> WriteVarData, 'M51_Whilrpool_Galaxy', rebin(data1, dims1[0], dims1[1], 24)
-    fileObj -> WriteVarData, 'Time', t_epoch
+    fileObj -> WriteVar, 'M51_Whilrpool_Galaxy', rebin(data1, dims1[0], dims1[1], 24)
+    fileObj -> WriteVar, 'Time', t_epoch
 
     ;Create and write in one step.
     ;   By default, this creates a zvariable with record and dimension variance of "VARY"
-    fileObj -> WriteVarData, 'Blood_Study', data2, /CREATE
+    fileObj -> WriteVar, 'Blood_Study', data2, /CREATE
     
 ;-----------------------------------------------------
 ; Create Variable Attributes \\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     ;Create a couple of variable attributes
     ;   - Global and Variable attribute names are grouped together and must be unique.
-    fileObj -> WriteVarAttrDef, 'DEPEND_0'
-    fileObj -> WriteVarAttrDef, 'Caption'
+    fileObj -> CreateAttr, 'DEPEND_0', /VARIABLE_SCOPE
+    fileObj -> CreateAttr, 'Caption', /VARIABLE_SCOPE
     
     ;Assign variables and values to the attributes
     ;   - Here we make a note that Whirlpool Galaxy data depends on the Time variable
@@ -164,9 +176,8 @@ pro CDF_File_Examples
     ;Destroy the object (writes file to disk and closes the file).
     obj_destroy, fileObj
     
-    
     ;Read the data
-    fileObj = obj_new('cdf_file', '/Users/argall/Desktop/cdf_example.cdf')
+    fileObj = obj_new('MrCDF_File', '/Users/argall/Desktop/cdf_example.cdf')
     fileObj -> PrintFileInfo
     data1 = fileObj -> Read('M51_Whilrpool_Galaxy')
     data2 = fileObj -> Read('Blood_Study')

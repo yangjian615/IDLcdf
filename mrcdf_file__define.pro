@@ -1,7 +1,7 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       CDF_File__Define
+;       MrCDF_File__Define
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2014, Matthew Argall                                                   ;
@@ -63,8 +63,22 @@
 ;       'CDF_UINT2'         -   UINT    -   2-byte, unsigned integer
 ;       'CDF_UINT4'         -   ULONG   -   4-byte, unsigned integer
 ;
+; ORGANIZATIONAL NOTES:
+;   Variables:
+;       rVariables and zVariables must have unique names. However, they are numbered
+;       independently, starting at 0. For this reason, they are kept in separate
+;       containers.
+;                                           c.f. CDF User's Guide Section 2.3.5-6
+;
+;   Attributes:
+;       Global and variable attributes all have unique names and are all numbered
+;       sequentially. They are stored together in the same internal list. Thus, there is
+;       a single container for all parsed attributes.
+;                                           c.f. CDF User's Guide Section 2.4.1-2
+;
+;
 ; :Examples:
-;       See the CDF_File_Examples.pro program for a demonstration of how to create,
+;       See the MrCDF_File_Examples.pro program for a demonstration of how to create,
 ;       write, read, and copy CDF files.
 ;
 ; :Categories:
@@ -76,14 +90,13 @@
 ;       CDF_Attribute__Define.pro
 ;       CDF_CastDataType.pro
 ;       CDF_Container__Define.pro
-;       CDF_File_Examples.pro
+;       MrCDF_File_Examples.pro
 ;       CDF_Variable__Define.pro
 ;       MrCmpVersion.pro
 ;       MrCDF_Epoch_Parse.pro
 ;       MrCDF_Epoch_Compare.pro
 ;       MrIsA.pro
 ;       
-;
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
@@ -102,12 +115,14 @@
 ;       2014/03/27  -   Added ENCODING and DECODING keywords to the Open method. - MRA
 ;       2014/03/31  -   Split the ATTRIBUTES property into GATTRS and VATTRS. Also split
 ;                           the VARIABLES property into RVARS and ZVARS. - MRA
+;       2014/05/07  -   Combined global and variable attributes into a single container
+;                           to mimic CDF file structure. - MRA
 ;-
 ;*****************************************************************************************
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
-function CDF_File::_OverloadPrint
+function MrCDF_File::_OverloadPrint
     compile_opt strictarr
     
     ;Error handling
@@ -122,13 +137,11 @@ function CDF_File::_OverloadPrint
     if self.isParsed eq 0 then self -> ParseFile
     
     ;Number of global attributes
-    gAttrCount = self.gAttrs -> Count()
-    vAttrCount = self.vAttrs -> Count()
-    rVarCount  = self.rVars  -> Count()
-    zVarCount  = self.zVars  -> Count()
+    self -> GetProperty, NGATTRS=gAttrCount, NVATTRS=vAttrCount, $
+                         NRVARS=rVarCount, NZVARS=zVarCount
     
     ;File information
-    fileStr  = string('FILENAME:',              self.filename, FORMAT='(a-33, a0)')
+    fileStr   = string('FILENAME:',              self.filename, FORMAT='(a-33, a0)')
     nGAttrStr = string('# Global Attributes:',   gAttrCount,    FORMAT='(a-30, i0)')
     nVAttrStr = string('# Variable Attributes:', vAttrCount,    FORMAT='(a-30, i0)')
     nRVarStr  = string('# R-Variables:',         rVarCount,     FORMAT='(a-30, i0)')
@@ -146,8 +159,11 @@ function CDF_File::_OverloadPrint
     
     ;Global attribute information
     gAttrStr = 'GLOBAL ATTRIBUTES'
-    allGAttrs = self.gAttrs -> Get(/ALL, COUNT=gAttrCount)
+    allGAttrs = self.attrs -> Get(/ALL, COUNT=gAttrCount)
     for i = 0, gAttrCount - 1 do begin
+        allGAttrs[i] -> GetProperty, SCOPE=scope
+        if scope ne 'GLOBAL_SCOPE' then continue
+        
         gAttrInfo = allGAttrs[i] -> _OverloadPrint()
         gAttrInfo = '   ' + gAttrInfo
         
@@ -177,7 +193,7 @@ end
 ;+
 ;   Close the CDF file
 ;-
-pro CDF_File::Close
+pro MrCDF_File::Close
     on_error, 2
 
     cdf_close, self.fileID
@@ -188,7 +204,7 @@ end
 ;+
 ;   The purpose of this method is to print CDF global attribute conventions
 ;-
-pro CDF_File::ConventionsGlobalAttr
+pro MrCDF_File::ConventionsGlobalAttr
     compile_opt strictarr
     on_error, 2
     
@@ -203,7 +219,7 @@ end
 ;+
 ;   The purpose of this method is to print CDF variable attribute conventions
 ;-
-pro CDF_File::ConventionsVarAttr
+pro MrCDF_File::ConventionsVarAttr
     compile_opt strictarr
     on_error, 2
     
@@ -249,14 +265,165 @@ end
 
 
 ;+
+;   Create a global or variable attribute.
+;
+; :Params:
+;       ATTRNAME:               in, required, type=string
+;                               Name of the attribute to be created.
+;
+; :Keywords:
+;       VARIABLE_SCOPE:         in, optional, type=boolean, default=0
+;                               If set, a variable attribute is created. The default
+;                                   is to create a global attribute.
+;-
+pro MrCDF_File::CreateAttr, attrName, $
+VARIABLE_SCOPE=variable_scope
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    ;Check if the file is writable
+    if self.writeable eq 0 then $
+        message, 'File is not writable. Cannot add new global attribute.'
+    
+    ;Does the attribute already exist?
+    if self -> HasAttr(attrName) then $
+        message, 'Attribute name"' + attrName + '" already exists. Cannot create.'
+    
+    ;Defaults
+    variable_scope = keyword_set(variable_scope)
+    global_scope   = ~variable_scope
+    
+    ;Create the attribute
+    attrID = cdf_attcreate(self.fileID, attrName, GLOBAL_SCOPE=global_scope, $
+                           VARIABLE_SCOPE=variable_scope)
+    
+    ;Create the attribute object.
+    self -> CreateAttrObj, attrName
+end
+
+
+;+
+;   The purpose of this method is to create a CDF variable and add it to the file.
+;   Variables can also be added in a more natural way with the CREATE keyword in
+;   the WriteVarData method. The default is to create a Z-variable.
+;
+; :Params:
+;       VARNAME:            in, required, type=string
+;                           Name of the variable to be created.
+;       DATATYPE:           in, required, type=string
+;                           Either the IDL type-name (as returned by Size(/TNAME)) or
+;                               the CDF datatype of the variable to be created. See the
+;                               file header for CDF data types.
+;       DIMVARY:            in, optional, type=bytarr/strarr
+;                           A vector with one element per CDF dimension. Elements are
+;                               either 'VARY' (or 1) or 'NOVARY' (or 0) to indicate
+;                               variance in that dimension.
+;       ALLOCATERECS:       in, optional, type=long
+;                           Number of pre-allocated records in a single-file CDF file.
+;                               Ensures that all data records are stored contiguously.
+;       DIMENSIONS:         in, optional, type=lonarr, default=0
+;                           Create a z-variable with the specified dimensions. If not
+;                               set, a scalar is assumed. Automatically sets `ZVARIABLE`=1.
+;       NUMELEM:            in, optional, type=long, default=1
+;                           Number of elements of data at each variable value. Only valid
+;                               if `DATATYPE` is "CDF_CHAR" or "CDF_UCHAR" and indicates
+;                               the length of the string.
+;       REC_NOVARY:         in, optional, type=boolean, default=0
+;                           If set, all records will contain the same information. The
+;                               default is "VARY"
+;       ZVARIABLE:          in, optional, type=boolean, default=1
+;                           If set, a z-variable will be created. Set equal to zero to
+;                               create an r-variable.
+;-
+pro MrCDF_File::CreateVar, varName, datatype, dimVary, $
+ALLOCATERECS=allocaterecs, $
+DIMENSIONS=dimensions, $
+NUMELEM=numelem, $
+REC_NOVARY=rec_novary, $
+ZVARIABLE=zvariable
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    ;Check if the file is writable
+    if self.writeable eq 0 then $
+        message, 'File is not writable. Cannot add new variable.'
+        
+    ;Does the variable name already exist?
+    if self -> HasVar(varName) then $
+        message, 'Variable name "' + varName + '" already exists. Cannot create.'
+    
+    ;Default to z-variables
+    zvariable = (n_elements(zvariable) eq 0) ? 1 : keyword_set(zvariable)
+    if n_elements(dimensions) gt 0 then zvariable = 1
+
+    ;Get the CDF data type
+    if strpos(datatype, 'CDF') eq -1 $
+        then cdf_type = CDF_CastDataType(datatype, /TNAME) $
+        else cdf_type = datatype
+    
+    ;Set the proper flag
+    case cdf_type of
+       'CDF_BYTE':        cdf_byte        = 1
+       'CDF_CHAR':        cdf_char        = 1
+       'CDF_DOUBLE':      cdf_double      = 1
+       'CDF_EPOCH':       cdf_epoch       = 1
+       'CDF_EPOCH16':     cdf_long_epoch  = 1
+       'CDF_LONG_EPOCH':  cdf_long_epoch  = 1
+       'CDF_FLOAT':       cdf_float       = 1
+       'CDF_INT1':        cdf_int1        = 1
+       'CDF_INT2':        cdf_int2        = 1
+       'CDF_INT4':        cdf_int4        = 1
+       'CDF_INT8':        cdf_int8        = 1
+       'CDF_REAL4':       cdf_read4       = 1
+       'CDF_REAL8':       cdf_real8       = 1
+       'CDF_TIME_TT2000': cdf_time_tt2000 = 1
+       'CDF_UCHAR':       cdf_uchar       = 1
+       'CDF_UINT1':       cdf_uint1       = 1
+       'CDF_UINT2':       cdf_uint2       = 1
+       'CDF_UINT4':       cdf_uint4       = 1
+       else: message, 'CDF datatype not recognized: "' + cdf_type + '".'
+    endcase
+
+    ;Write the data
+    varID = cdf_varcreate(self.fileID, varName, dimVary, ALLOCATERECS=allocaterecs, $
+                          DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
+                          ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
+                          CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
+                          CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
+                          CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
+                          CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
+                          CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
+                          CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+    
+    ;Add the variable object
+    self -> CreateVarObj, varName
+end
+
+
+;+
 ;   The purpose of this method is to create an attribute object.
+;
+; :Private:
 ;
 ; :Params:
 ;       ATTRNAME:           in, required, type=string
-;                           A valid CDF global attribute name.
+;                           A valid CDF attribute name.
 ;-
-pro CDF_File::CreateAttrObj, attrName, $
-VARIABLE=variable
+pro MrCDF_File::CreateAttrObj, attrName
     compile_opt strictarr
     
     ;Error handling
@@ -268,23 +435,23 @@ VARIABLE=variable
     endif
     
     ;Create the attribute and add it to the container.
-    attrObj = obj_new('CDF_Attribute', attrName, self)
+    attrObj = obj_new('MrCDF_Attribute', attrName, self)
     
     ;Add the attribute to the proper container
-    if n_elements(variable) eq 0 $
-        then self.gAttrs -> Add, attrObj $
-        else self.vAttrs -> Add, attrObj
+    self.attrs -> Add, attrObj
 end
 
 
 ;+
 ;   The purpose of this method is to create a variable object.
 ;
+; :Private:
+;
 ; :Params:
 ;       VARNAME:            in, required, type=string
 ;                           A valid CDF variable name.
 ;-
-pro CDF_File::CreateVarObj, varName
+pro MrCDF_File::CreateVarObj, varName
     compile_opt strictarr
     
     ;Error handling
@@ -296,7 +463,7 @@ pro CDF_File::CreateVarObj, varName
     endif
     
     ;Create the attribute and add it to the container.
-    varObj = obj_new('CDF_Variable', varName, self, isZVar=isZVar)
+    varObj = obj_new('MrCDF_Variable', varName, self, isZVar=isZVar)
     
     ;Add to the proper container.
     if isZVar $
@@ -315,7 +482,7 @@ end
 ;       ATTRNAME:           in, required, type=string
 ;                           Name of the variable attribute whose value is to be returned.
 ;-
-function CDF_File::CopyGlobalAttrTo, attrName, destObj
+function MrCDF_File::CopyGlobalAttrTo, attrName, destObj
     compile_opt strictarr
     on_error, 2
 
@@ -352,7 +519,7 @@ end
 ;       ATTRNAME:           in, required, type=string
 ;                           Name of the variable attribute whose value is to be returned.
 ;-
-function CDF_File::CopyVarAttrTo, variable, attrName, destObj
+function MrCDF_File::CopyVarAttrTo, variable, attrName, destObj
     compile_opt strictarr
     on_error, 2
 
@@ -392,7 +559,7 @@ end
 ;       ATTRNAME:           in, required, type=string
 ;                           Name of the variable attribute whose value is to be returned.
 ;-
-function CDF_File::CopyVariableTo, variable, destObj
+function MrCDF_File::CopyVariableTo, variable, destObj
     compile_opt strictarr
     on_error, 2
 
@@ -443,7 +610,7 @@ end
 ;       ATTRNAME:           in, required, type=string
 ;                           Name of the variable attribute whose value is to be returned.
 ;-
-function CDF_File::CopyVarDataTo, variable, destObj, $
+function MrCDF_File::CopyVarDataTo, variable, destObj, $
 COUNT=count, $
 INTERVAL=interval, $
 OFFSET=offset, $
@@ -488,7 +655,7 @@ end
 ;                           Entry number to be deleted. If not present, then entire
 ;                               attribute is deleted.
 ;-
-function CDF_File::DelGlobalAttr, gAttrName, entrynNum
+function MrCDF_File::DelGlobalAttr, gAttrName, entrynNum
     compile_opt strictarr
     on_error, 2
 
@@ -530,7 +697,7 @@ end
 ;                               3 - Adaptive Huffman
 ;                               5 - GZip (See the `GZIP_LEVEL` keyword)
 ;-
-function CDF_File::GetCompression, $
+function MrCDF_File::GetCompression, $
 VARIABLE=variable, $
 GZIP_LEVEL=gzip_level
     compile_opt strictarr
@@ -563,12 +730,20 @@ end
 
 
 ;+
-;   Get the names of the global attributes.
+;   Create a mask for the global entry numbers (gEntryNums) associated with a global
+;   attribute. Global attribute values are array-like and are indexed by gEntryNums.
+;   However, values do not need to exist at all gEntryNum. This method creates a mask
+;   of 1s and 0s indicated if a value exists at the corresponding gEntryNum.
+;
+; :Params:
+;       GATTRNAME:          in, required, type=string
+;                           Name of the global attribute..
 ;
 ; :Returns:
-;       GATTRNAMES:         Name(s) of the global attribute(s) within the CDF file.
+;       GENTRYMASK:         Array of 1s and 0s indicating whether or not a value exists
+;                               at the corresponding global entry number.
 ;-
-function CDF_File::GetGEntryMask, gAttrName, $
+function MrCDF_File::GetGEntryMask, gAttrName, $
 GENTRYCOUNT=gEntryCount, $
 MAXGENTRY=maxGEntry
     compile_opt strictarr
@@ -582,47 +757,75 @@ MAXGENTRY=maxGEntry
     if obj_valid(gAttrObj) eq 0 then $
         message, 'Could not find attribute with name "' + gAttrName + '".'
     
-    gAttrObj
-    nGAttrs = self.attributes -> Count()
-    if nGAttrs eq 0 then return, ''
-
-    ;Get all of the global attribute names
-    gAttrNames = strarr(nGAttrs)
-    allGAttrs  = self.attributes -> Get(/ALL)
-    for i = 0, nGAttrs-1 do gAttrNames[i] = allGAttrs[i] -> GetName()
-
-    ;Return a scalar?
-    if nGAttrs eq 1 then gAttrNames = gAttrNames[0]
-    return, gAttrNames
+    ;Get the mask
+    gEntryMask = gAttrObj -> GetEntryMask()
+    
+    return, gEntryMask
 end
 
 
 ;+
-;   Get the names of the global attributes.
+;   Get the names of all global and/or varaible attributes.
+;
+; :Keywords:
+;       ALL:                in, optional, type=boolean, default=0
+;                           If set, variable attribute names will be included in the
+;                               results.
+;       COUNT:              out, optional, type=integer
+;                           Number of attribute names returned.
+;       VARIABLE_SCOPE:     in, optional, type=boolea, default=0
+;                           If set, only variable attribute names will be returned.
 ;
 ; :Returns:
-;       GATTRNAMES:         Name(s) of the global attribute(s) within the CDF file.
+;       ATTRNAMES:          Name(s) of the attribute(s) within the CDF file. If no
+;                               attributes are found, the empty string is returned.
 ;-
-function CDF_File::GetGlobalAttrNames, $
-COUNT=nGAttrs
+function MrCDF_File::GetAttrNames, $
+ALL=all, $
+COUNT=count, $
+VARIABLE_SCOPE=variable_scope
     compile_opt strictarr
     on_error, 2
 
     ;File must be parsed first
     if self.isParsed eq 0 then self -> ParseFile
 
+    ;Defaults
+    all            = keyword_set(all)
+    variable_scope = all ? 1 : keyword_set(variable_scope)
+    global_scope   = all ? 1 : ~variable_scope
+
     ;Count the number of global attributes
-    nGAttrs = self.gAttrs -> Count()
-    if nGAttrs eq 0 then return, ''
+    nAttrs = self.attrs -> Count()
+    if nAttrs eq 0 then return, ''
 
     ;Get all of the global attribute names
-    gAttrNames = strarr(nGAttrs)
-    allGAttrs  = self.gAttrs -> Get(/ALL)
-    for i = 0, nGAttrs-1 do gAttrNames[i] = allGAttrs[i] -> GetName()
+    count = 0
+    attrNames = strarr(nAttrs)
+    allAttrs = self.attrs -> Get(/ALL)
+    for i = 0, nAttrs-1 do begin
+        allAttrs[i] -> GetProperty, NAME=name, SCOPE=scope
+        
+        ;Keep global attributes
+        if global_scope && scope eq 'GLOBAL_SCOPE' then begin
+            attrNames[count] = name
+            count++
+        endif
+        
+        ;Keep variable attributes
+        if global_scope && scope eq 'VARIABLE_SCOPE' then begin
+            attrNames[count] = name
+            count++
+        endif
+    endfor
+    
+    ;Return a scalar?
+    if count eq 1 $
+        then attrNames = attrNames[0] $
+        else attrNames = attrNames[0:count-1]
 
     ;Return a scalar?
-    if nGAttrs eq 1 then gAttrNames = gAttrNames[0]
-    return, gAttrNames
+    return, attrNames
 end
 
 
@@ -636,11 +839,7 @@ end
 ;
 ; :Keywords:
 ;       CDF_TYPE:           out, optional, type=string
-;                           CDF datatype of `GATTRVALUE`.  Posibilities are: 'CDF_BYTE',
-;                               'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
-;                               'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
-;                               'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR', 'CDF_UINT1',
-;                               'CDF_UINT2', 'CDF_UINT4'.
+;                           CDF datatype of `GATTRVALUE`.
 ;       GENTRYNUM:          in, optional, type=long
 ;                           The global entry number of the value to be returned. It
 ;                               is an index into the list of values associated with
@@ -649,7 +848,7 @@ end
 ; :Returns:
 ;       GATTRVALUE:         Value of the global attribute.
 ;-
-function CDF_File::GetGlobalAttrValue, gAttribute, $
+function MrCDF_File::GetGlobalAttrValue, gAttribute, $
 CDF_TYPE=cdf_type
     compile_opt strictarr
     on_error, 2
@@ -681,10 +880,15 @@ end
 ;+
 ;   Get the names of the CDF variables.
 ;
+; :Keywords:
+;       COUNT:              out, optional, type=integer
+;                           Number of variable names returned.
+;
 ; :Returns:
-;       VARNAMES:           Name(s) of the variable(s) within the CDF file.
+;       VARNAMES:           Name(s) of the variable(s) within the CDF file. If no
+;                               variable names are found, the empty string is returned.
 ;-
-function CDF_File::GetVarNames, $
+function MrCDF_File::GetVarNames, $
 COUNT=nVars
     compile_opt strictarr
     on_error, 2
@@ -722,7 +926,7 @@ end
 ; :Returns:
 ;       ATTRNAMES:          Name(s) of the variable attributes associated with `VARIABLE`
 ;-
-function CDF_File::GetVarAttrNames, variable, $
+function MrCDF_File::GetVarAttrNames, variable, $
 COUNT=varAttrCount
     compile_opt strictarr
     on_error, 2
@@ -764,16 +968,12 @@ end
 ;
 ; :Keywords:
 ;       DATATYPE:           out, optional, type=string
-;                           CDF datatype of `GATTRVALUE`.  Posibilities are: 'CDF_BYTE',
-;                               'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
-;                               'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
-;                               'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR', 'CDF_UINT1',
-;                               'CDF_UINT2', 'CDF_UINT4'.
+;                           CDF datatype of `GATTRVALUE`.
 ;
 ; :Returns:
 ;       ATTRVALUE:          Value of the attribute.
 ;-
-function CDF_File::GetVarAttrValue, variable, attrName, $
+function MrCDF_File::GetVarAttrValue, variable, attrName, $
 CDF_TYPE=cdf_type
     compile_opt strictarr
     on_error, 2
@@ -842,7 +1042,7 @@ end
 ; :Returns:
 ;       DATA:               Data of the CDF variable specified.
 ;-
-function CDF_File::GetVarData, variable, $
+function MrCDF_File::GetVarData, variable, $
 ;INPUT
 COUNT=count, $
 INTERVAL=interval, $
@@ -913,7 +1113,7 @@ end
 ;       WRITEABLE:          out, optional, type=boolean
 ;                           Flag indicating that the file is writeable (1) or read-only (0).
 ;-
-pro CDF_File::GetProperty, $
+pro MrCDF_File::GetProperty, $
 FILENAME=filename, $
 fileID=fileID, $
 NATTRS=nAttrs, $
@@ -928,17 +1128,12 @@ WRITEABLE=writeable
     
     if arg_present(filename)  then filename  = self.filename
     if arg_present(fileID)    then fileID    = self.fileID
-    if arg_present(ngattrs)   then ngattrs   = self.gAttrs -> Count()
-    if arg_present(nvattrs)   then nvattrs   = self.vAttrs -> Count()
-    if arg_present(nrvars)    then nrvars    = self.rVars -> Count()
-    if arg_present(nzvars)    then nzvars    = self.zVars -> Count()
+    if arg_present(nAttrs)    then nAttrs    = self.attrs -> Count()
+    if arg_present(nGAttrs)   then void      = self -> GetAttrNames(COUNT=nGAttrs)
+    if arg_present(nVAttrs)   then void      = self -> GetAttrNames(COUNT=nVAttrs, /VARIABLE_SCOPE)
+    if arg_present(nRVars)    then nrvars    = self.rVars -> Count()
+    if arg_present(nZVars)    then nzvars    = self.zVars -> Count()
     if arg_present(writeable) then writeable = self.writeable
-    
-    if arg_present(nattrs) then begin
-        nGAttrs = self.gAttrs -> Count()
-        nVAttrs = self.vAttrs -> Count()
-        nattrs = nGAttrs + nVAttrs
-    endif
     
     if arg_present(nvars) then begin
         nRVars = self.rVars -> Count()
@@ -954,16 +1149,16 @@ end
 ; :Returns:
 ;       FILEID:         Identifier number for the CDF file.
 ;-
-function CDF_File::GetFileID
+function MrCDF_File::GetFileID
     return, self.fileID
 end
 
 
 ;+
-;   Determines if a global attribute is present in the file.
+;   Determines if a specific attribute is present in the file.
 ;
 ; :Params:
-;       GATTRNAME:          in, required, type=string
+;       ATTRNAME:           in, required, type=string
 ;                           Name of the attribute to search for.
 ;
 ; :Keywords:
@@ -973,49 +1168,17 @@ end
 ; :Returns:
 ;       TF_HAS:             Returns true (1) of the attribute name exists, false (0) otherwise.
 ;-
-function CDF_File::HasGlobalAttr, gAttrName, $
+function MrCDF_File::HasAttr, attrName, $
 OBJECT=object
     compile_opt strictarr
     on_error, 2
 
     ;Try to find the object
-    object = self.gAttrs -> FindByName(gAttrName, COUNT=count)
+    object = self.attrs -> FindByName(attrName, COUNT=count)
     
     if count gt 0 $
         then return, 1 $
         else return, 0
-end
-
-
-;+
-;   Determines if a variable attribute is contained within the file. To determine if
-;   a specific variable as a particular attribute, use the VarHasAttr method.
-;
-; :Params:
-;       VARATTRNAME:        in, required, type=string
-;                           Name of the variable attribute.
-;
-; :Keywords:
-;       OBJECT:             out, optional, type=object
-;                           CDF_Attribute object reference for the attribute identified
-;                               by `VARATTRNAME`.
-;
-; :Returns:
-;       TF_EXISTS:          Returns true (1) of the variable attribute exists, 
-;                               false (0) otherwise.
-;-
-function CDF_File::HasVarAttr, varAttrName, $
-OBJECT=object
-    compile_opt strictarr
-    on_error, 2
-
-    ;Try to find the object
-    object = self.vAttrs -> FindByName(varAttrName, COUNT=count)
-    if count eq 0 $
-        then tf_exists = 0 $
-        else tf_exists = 1
-    
-    return, tf_exists
 end
 
 
@@ -1033,17 +1196,21 @@ end
 ; :Returns:
 ;       TF_HAS:             Returns true (1) of the attribute name exists, false (0) otherwise.
 ;-
-function CDF_File::HasVar, varName, $
+function MrCDF_File::HasVar, varName, $
 ISZVAR=isZVar, $
 OBJECT=object
     compile_opt strictarr
     on_error, 2
 
-    ;Try to find the object
+    ;Try zVariables first
+    isZVar = 1B
     object = self.zVars -> FindByName(varName, COUNT=count)
-    if count eq 0 $
-        then object = self.rVars -> FindByName(varName, COUNT=count) $
-        else isZVar = 1B
+    
+    ;Try rVariables
+    if count eq 0 then begin
+        object = self.rVars -> FindByName(varName, COUNT=count)
+        isZVar = 0B
+    endif
         
     ;Was the variable found?
     if count gt 0 $
@@ -1140,7 +1307,7 @@ end
 ;                               file. File validation only occurs in IDL 8.0+.
 ;       _REF_EXTRA:         in, optinal, type=any
 ;-
-pro CDF_File::Open, filename, $
+pro MrCDF_File::Open, filename, $
 BACKWARD_COMPATIBLE = backward_compatible, $
 CANCEL = cancel, $
 ROW_MAJOR = row_major, $
@@ -1313,7 +1480,7 @@ end
 ;   The purpose of this method is to load the Variable Attributes for each z-variable
 ;   of the CDf file.
 ;-
-pro CDF_File::ParseFile
+pro MrCDF_File::ParseFile
     compile_opt strictarr
 
     ;catch errors
@@ -1328,10 +1495,9 @@ pro CDF_File::ParseFile
     if self.isParsed eq 1 then return
     
     ;Make sure the attributes are empty
-    self.gAttrs -> Remove, /ALL, /DESTROY
-    self.vAttrs -> Remove, /ALL, /DESTROY
-    self.zVars  -> Remove, /ALL, /DESTROY
-    self.rVars  -> Remove, /ALL, /DESTROY
+    self.attrs -> Remove, /ALL, /DESTROY
+    self.zVars -> Remove, /ALL, /DESTROY
+    self.rVars -> Remove, /ALL, /DESTROY
 
 ;-----------------------------------------------------
 ; Global Attribute and Variable Info \\\\\\\\\\\\\\\\\
@@ -1377,27 +1543,26 @@ pro CDF_File::ParseFile
     if nGAttrs ne globalAttrCount then message, 'Could not find all global attributes.'
 
 ;-----------------------------------------------------
-; Parse Variables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+; Parse zVariables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     ;zVariables are stored after rVariables.
-    rCount = 0L
-    zCount = 0L
-    for varNum = 0, nVars-1 do begin
-        ;Get the variable name
-        zvariable = (varNum gt nRVars-1) ? 1 : 0
-        varinq = cdf_varinq(self.fileID, varNum, ZVARIABLE=zvariable)
+    for varNum = 0, nZVars-1 do begin
+        varinq = cdf_varinq(self.fileID, varNum, /ZVARIABLE)
 
         ;Create a variable object
         self -> CreateVarObj, varinq.name
-        
-        if zvariable $
-            then zCount++ $
-            else rCount++
     endfor
-    
-    ;Were all r- and z-variables found?
-    if rCount ne nRVars then message, 'Count not find all rVariables.'
-    if zCount ne nZVars then message, 'Could not find all zVariables.'
+
+;-----------------------------------------------------
+; Parse rVariables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    ;zVariables are stored after rVariables.
+    for varNum = 0, nRVars-1 do begin
+        varinq = cdf_varinq(self.fileID, varNum)
+
+        ;Create a variable object
+        self -> CreateVarObj, varinq.name
+    endfor
     
     self.isParsed = 1B
 end
@@ -1406,7 +1571,7 @@ end
 ;+
 ;   The purpose of this method is to print information about the file.
 ;-
-pro CDF_File::PrintFileInfo
+pro MrCDF_File::PrintFileInfo
     compile_opt strictarr
     on_error, 2
 
@@ -1474,7 +1639,7 @@ end
 ;                               exists in the file. It is possible that this value does
 ;                               not exist.
 ;-
-function CDF_File::Read, varName, depend_0, depend_1, depend_2, depend_3, $
+function MrCDF_File::Read, varName, depend_0, depend_1, depend_2, depend_3, $
 ;INPUT
 COUNT=count, $
 INTERVAL=interval, $
@@ -1624,7 +1789,7 @@ end
 ;                           Desired effort of GZip compression, from 1-9. Automatically
 ;                               sets `COMPRESSION`=5.
 ;-
-pro CDF_File::SetCompression, compression, $
+pro MrCDF_File::SetCompression, compression, $
 GZIP_LEVEL=gzip_level, $
 VARIABLE=variable
     compile_opt strictarr
@@ -1691,7 +1856,7 @@ end
 ;       TF_HAS:             Returns true (1) of the variable has the attribute identified, 
 ;                               by `ATTRNAME` and false (0) otherwise.
 ;-
-function CDF_File::VarHasAttr, varName, attrName, $
+function MrCDF_File::VarHasAttr, varName, attrName, $
 OBJECT=object
     compile_opt strictarr
     on_error, 2
@@ -1710,7 +1875,7 @@ end
 ;+
 ;   Write a value to a global attribute.
 ;
-;   Values are stored at global entry numbers, which serve as an array index. The range
+;   Values are stored at global entry numbers, which serve as array indices. They range
 ;   from 0 to maxGEntry, which can be obtained from CDF_Control's GET_ATTR_INFO property.
 ;   However, unlike array indices, gEntryNums do not have to be contiguous. Out of the
 ;   maxGEntry+1 entries, only numGEntries (again, obtained from CDF_Control) are defined.
@@ -1730,14 +1895,14 @@ end
 ;                           If set, `VALUE` will be written as a datatype "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE" Can
 ;                               be a vector the same lenth as `VALUE`.
-;       GENTRYNUM:          in, required, type=integer, defualt=maxGEntry+1
+;       GENTRYNUM:          in, optional, type=integer, defualt=maxGEntry+1
 ;                           Either a scalar or vector of global entry numbers. If a scalar,
 ;                               then the element(s) of `VALUE` will be stored contiguously
 ;                               starting at the given value. If a vector, it must be the
 ;                               same length as `VALUE`. If a value was already stored at
 ;                               GENTRYNUM, then it will be overwritten.
 ;-
-pro CDF_File::WriteGlobalAttr, gAttrName, value, $
+pro MrCDF_File::WriteGlobalAttr, gAttrName, value, $
 CREATE=create, $
 CDF_EPOCH=cdf_epoch, $
 GENTRYNUM=gEntryNum
@@ -1756,9 +1921,9 @@ GENTRYNUM=gEntryNum
         message, 'File is not writable. Cannot add new global attribute.'
     
     ;Does the attribute exist?
-    if self -> HasGlobalAttr(gAttrName) eq 0 then begin
+    if self -> HasAttr(gAttrName) eq 0 then begin
         if keyword_set(create) $
-            then self -> WriteGlobalAttrDef, gAttrName $
+            then self -> CreateAttr, gAttrName $
             else message, 'Global attribute "' + gAttrName + '" does not exist. ' + $
                           'Set the CREATE keyword or use the WriteGlobalAttrDef method to create it.'
     endif
@@ -1799,36 +1964,6 @@ end
 
 
 ;+
-;   Create a global attribute.
-;
-; :Params:
-;       GATTRNAME:              in, required, type=string
-;                               Name of the global attribute to be created.
-;-
-pro CDF_File::WriteGlobalAttrDef, gAttrName
-    compile_opt strictarr
-
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return
-    endif
-    
-    ;Check if the file is writable
-    if self.writeable eq 0 then $
-        message, 'File is not writable. Cannot add new global attribute.'
-    
-    ;Create the attribute
-    gAttrID = cdf_attcreate(self.fileID, gAttrName, /GLOBAL_SCOPE)
-    
-    ;Create the attribute object.
-    self -> CreateAttrObj, gAttrName
-end
-
-
-;+
 ;   Write a value to a variable attribute.
 ;
 ; :Params:
@@ -1847,7 +1982,7 @@ end
 ;                           If set, `VALUE` will be written as a "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE"
 ;-
-pro CDF_File::WriteVarAttr, variable, attrName, value, $
+pro MrCDF_File::WriteVarAttr, variable, attrName, value, $
 CREATE=create, $
 CDF_EPOCH=cdf_epoch
     compile_opt strictarr
@@ -1880,143 +2015,6 @@ CDF_EPOCH=cdf_epoch
     
     ;Create the variable attribute
     varObj -> WriteAttrValue, attrName, value, CREATE=create, CDF_EPOCH=cdf_epoch
-end
-
-
-;+
-;   Create a variable attribute.
-;
-; :Params:
-;       GATTRNAME:              in, required, type=string
-;                               Name of the global attribute to be created.
-;-
-pro CDF_File::WriteVarAttrDef, attrName
-    compile_opt strictarr
-
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return
-    endif
-    
-    ;Check if the file is writable
-    if self.writeable eq 0 then $
-        message, 'File is not writable. Cannot add new variable.'
-    
-    ;Create the variable attribute
-    attrID = cdf_attcreate(self.fileID, attrName, /VARIABLE_SCOPE)
-    
-    ;Store the variable attribute
-    self -> CreateAttrObj, attrName, /VARIABLE
-end
-
-
-;+
-;   The purpose of this method is to create a CDF variable and add it to the file.
-;   Variables can also be added in a more natural way with the CREATE keyword in
-;   the WriteVarData method. The default is to create a Z-variable.
-;
-;   NOTES
-;       I. About Variable Creation
-;           rVariables and zVariables must have unique names. However, they are numbered
-;           independently, starting at 0. For this reason, they are kept in separate
-;           containers.
-;
-; :Params:
-;       VARNAME:            in, required, type=string
-;                           Name of the variable to be created.
-;       DATATYPE:           in, required, type=string
-;                           Either the IDL type-name (as returned by Size(/TNAME)) or
-;                               the CDF datatype of the variable to be created. See the
-;                               file header for CDF data types.
-;       DIMVARY:            in, optional, type=bytarr/strarr
-;                           A vector with one element per CDF dimension. Elements are
-;                               either 'VARY' (or 1) or 'NOVARY' (or 0) to indicate
-;                               variance in that dimension.
-;       ALLOCATERECS:       in, optional, type=long
-;                           Number of pre-allocated records in a single-file CDF file.
-;                               Ensures that all data records are stored contiguously.
-;       DIMENSIONS:         in, optional, type=lonarr, default=0
-;                           Create a z-variable with the specified dimensions. If not
-;                               set, a scalar is assumed. Automatically sets `ZVARIABLE`=1.
-;       NUMELEM:            in, optional, type=long, default=1
-;                           Number of elements of data at each variable value. Only valid
-;                               if `DATATYPE` is "CDF_CHAR" or "CDF_UCHAR" and indicates
-;                               the length of the string.
-;       REC_NOVARY:         in, optional, type=boolean, default=0
-;                           If set, all records will contain the same information. The
-;                               default is "VARY"
-;       ZVARIABLE:          in, optional, type=boolean, default=1
-;                           If set, a z-variable will be created. Set equal to zero to
-;                               create an r-variable.
-;-
-pro CDF_File::WriteVarDef, varName, datatype, dimVary, $
-ALLOCATERECS=allocaterecs, $
-DIMENSIONS=dimensions, $
-NUMELEM=numelem, $
-REC_NOVARY=rec_novary, $
-ZVARIABLE=zvariable
-    compile_opt strictarr
-
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return
-    endif
-    
-    ;Check if the file is writable
-    if self.writeable eq 0 then $
-        message, 'File is not writable. Cannot add new variable.'
-    
-    ;Default to z-variables
-    zvariable = (n_elements(zvariable) eq 0) ? 1 : keyword_set(zvariable)
-    if n_elements(dimensions) gt 0 then zvariable = 1
-
-    ;Get the CDF data type
-    if strpos(datatype, 'CDF') eq -1 $
-        then cdf_type = CDF_CastDataType(datatype, /TNAME) $
-        else cdf_type = datatype
-    
-    ;Set the proper flag
-    case cdf_type of
-       'CDF_BYTE':        cdf_byte        = 1
-       'CDF_CHAR':        cdf_char        = 1
-       'CDF_DOUBLE':      cdf_double      = 1
-       'CDF_EPOCH':       cdf_epoch       = 1
-       'CDF_EPOCH16':     cdf_long_epoch  = 1
-       'CDF_LONG_EPOCH':  cdf_long_epoch  = 1
-       'CDF_FLOAT':       cdf_float       = 1
-       'CDF_INT1':        cdf_int1        = 1
-       'CDF_INT2':        cdf_int2        = 1
-       'CDF_INT4':        cdf_int4        = 1
-       'CDF_INT8':        cdf_int8        = 1
-       'CDF_REAL4':       cdf_read4       = 1
-       'CDF_REAL8':       cdf_real8       = 1
-       'CDF_TIME_TT2000': cdf_time_tt2000 = 1
-       'CDF_UCHAR':       cdf_uchar       = 1
-       'CDF_UINT1':       cdf_uint1       = 1
-       'CDF_UINT2':       cdf_uint2       = 1
-       'CDF_UINT4':       cdf_uint4       = 1
-       else: message, 'CDF datatype not recognized: "' + cdf_type + '".'
-    endcase
-
-    ;Write the data
-    varID = cdf_varcreate(self.fileID, varName, dimVary, ALLOCATERECS=allocaterecs, $
-                          DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
-                          ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
-                          CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
-                          CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
-                          CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
-                          CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
-                          CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
-                          CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
-    
-    ;Add the variable object
-    self -> CreateVarObj, varName
 end
 
 
@@ -2057,7 +2055,7 @@ end
 ;       REC_START:          in, optional, type=integer, defualt=0
 ;                           Record at which to begin writing data.
 ;-
-pro CDF_File::WriteVarData, variable, data, $
+pro MrCDF_File::WriteVar, variable, data, $
 COUNT=count, $
 INTERVAL=interval, $
 OFFSET=offset, $
@@ -2124,8 +2122,8 @@ ZVARIABLE=zvariable
         endif
 
         ;Create the variable
-        self -> WriteVarDef, variable, cdf_type, dimVary, ALLOCATERECS=allocaterecs, $
-                             DIMENSIONS=dims, REC_NOVARY=rec_novary
+        self -> CreateVar, variable, cdf_type, dimVary, ALLOCATERECS=allocaterecs, $
+                           DIMENSIONS=dims, REC_NOVARY=rec_novary
     endif
     
 ;-----------------------------------------------------
@@ -2149,7 +2147,7 @@ ZVARIABLE=zvariable
 ;-----------------------------------------------------
     varName = varObj -> GetName()
     
-    ;Prevent warnings from the CDF DLM?
+    ;Prevent warnings from the CDF DLM.
     quiet_in = !Quiet
     !Quiet = quiet
 
@@ -2166,15 +2164,14 @@ end
 ;
 ; :Hidden:
 ;-
-pro CDF_File::cleanup
+pro MrCDF_File::cleanup
     compile_opt idl2
 
     ;close the CDF file
     self -> Close
     
     ;Destoy objects
-    obj_destroy, self.gAttrs
-    obj_destroy, self.vAttrs
+    obj_destroy, self.attrs
     obj_destroy, self.rVars
     obj_destroy, self.zVars
 end
@@ -2212,7 +2209,7 @@ end
 ;                           valid object reference is returned (1). Otherwise, an invalid
 ;                           object reference is returned (0).
 ;-
-function CDF_File::init, filename, $
+function MrCDF_File::init, filename, $
 CREATE=create, $
 DIALOG_PARENT = dialog_parent, $
 DIRECTORY = directory, $
@@ -2232,10 +2229,9 @@ _REF_EXTRA=extra
     create = keyword_set(create)
     
     ;Allocate Pointers
-    self.rVars  = obj_new('CDF_Container')
-    self.zVars  = obj_new('CDF_Container')
-    self.gAttrs = obj_new('CDF_Container')
-    self.vAttrs = obj_new('CDF_Container')
+    self.attrs = obj_new('MrCDF_Container')
+    self.rVars = obj_new('MrCDF_Container')
+    self.zVars = obj_new('MrCDF_Container')
 
     ;Open the file and load the meta-data
     self -> open, filename, $
@@ -2254,25 +2250,31 @@ end
 
 
 ;+
-; The init method for CDF_File__DEFINE.PRO
+;   Class definition
 ;
 ; :Hidden:
 ;
+; :Params:
+;       CLASS:              out, optional, type=structure
+;                           Class definition structure.
+;
 ; :Fields:
 ;       FILENAME:           The name of the CDF file begin read.
-;       CDF_ID:             The CDF ID number of the file being read.
-;       ATTRIBUTES:         Each attribute and its meta-data.
-;       VARIABLES:          Each variable and its meta-data.
+;       FILEID:             The CDF ID number of the file being read.
+;       ISPARSED:           Indicates that the file has been parsed.
+;       ATTRS:              Container of attribute objects.
+;       RVARS:              Container of rVariables.
+;       ZVARS:              Container of zVariables.
+;       WRITEABLE:          Indicates that the file is writeable.
 ;-
-pro CDF_File__define
+pro MrCDF_File__define, class
     compile_opt strictarr
     
-    define = { CDF_File, $
+    define = { MrCDF_File, $
                filename:  '', $
                fileID:    0L, $
                isParsed:  0B, $
-               gAttrs:    obj_new(), $
-               vAttrs:    obj_new(), $
+               attrs:     obj_new(), $
                rVars:     obj_new(), $
                zVars:     obj_new(), $
                writeable: 0B $

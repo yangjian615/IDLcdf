@@ -1,7 +1,7 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       CDF_Attribute__Define
+;       MrCDF_Attribute__Define
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2014, Matthew Argall                                                   ;
@@ -73,7 +73,7 @@
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
-function CDF_Attribute::_OverloadPrint
+function MrCDF_Attribute::_OverloadPrint
     on_error, 2
     
     ;Get the entry information
@@ -105,7 +105,10 @@ end
 
 
 ;+
-;   Return the value of the attribute.
+;   Create a mask for the global entry numbers (gEntryNums) associated with a global
+;   attribute. Global attribute values are array-like and are indexed by gEntryNums.
+;   However, values do not need to exist at all gEntryNum. This method creates a mask
+;   of 1s and 0s indicated if a value exists at the corresponding gEntryNum.
 ;
 ; :Keywords:
 ;       MAXGENTRY:          in, optional, type=long
@@ -117,7 +120,7 @@ end
 ; :Returns:
 ;       ATTRVALUE:          Value(s) of the attribute.
 ;-
-function CDF_Attribute::GetEntryMask, $
+function MrCDF_Attribute::GetEntryMask, $
 CDF_TYPE=cdf_type, $
 MAXGENTRY=maxGEntry, $
 MAXRENTRY=maxREntry, $
@@ -143,7 +146,7 @@ NUMZENTRIES=numZEntries
         ;Build the mask
         entryMask = bytarr(maxGEntry+1)
         gAttrCount = 0L
-        if doCDFTYPe then cdf_type  = strarr(maxGEntry+1)
+        if doCDFType then cdf_type  = strarr(maxGEntry+1)
         
         ;Step through each entry
         for thisGEntry = 0, maxGEntry do begin
@@ -185,7 +188,7 @@ end
 ; :Returns:
 ;       ATTRNAME:           CDF attribute name.
 ;-
-function CDF_Attribute::GetName
+function MrCDF_Attribute::GetName
     return, self.name
 end
 
@@ -196,7 +199,7 @@ end
 ; :Returns:
 ;       ATTRNUM:            CDF attribute number.
 ;-
-function CDF_Attribute::GetNumber
+function MrCDF_Attribute::GetNumber
     return, self.number
 end
 
@@ -219,11 +222,8 @@ end
 ;
 ; :Keywords:
 ;       CDF_TYPE:           out, optional, type=string
-;                           CDF datatype of `ATTRVALUE`. Posibilities are: 'CDF_BYTE',
-;                               'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
-;                               'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
-;                               'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR', 'CDF_UINT1',
-;                               'CDF_UINT2', 'CDF_UINT4' or 'UNKNOWN'.
+;                           CDF datatype of `ATTRVALUE`. Not all attribute values need
+;                               to be of the same datatype.
 ;       ENTRYMASK:          out, optional, type=bytarr
 ;                           An array of 1's and 0's indicating whether or not a value
 ;                               has been written to the global entry number corresponding
@@ -239,7 +239,7 @@ end
 ;                               be the same type. If they are not, a "LinkedList" object
 ;                               will be returned instead of an array.
 ;-
-function CDF_Attribute::GetGlobalAttrValue, entryNum, $
+function MrCDF_Attribute::GetGlobalAttrValue, entryNum, $
 CDF_TYPE=cdf_type, $
 ENTRYMASK=entryMask, $
 ZVARIABLE=zvariable
@@ -360,7 +360,7 @@ end
 ; :Returns:
 ;       ATTRVALUE:          Value(s) of the attribute.
 ;-
-function CDF_Attribute::GetVarAttrValue, varName, $
+function MrCDF_Attribute::GetVarAttrValue, varName, $
 CDF_TYPE=cdf_type
     on_error, 2
     
@@ -402,7 +402,7 @@ end
 ;       VALUE:          out, optional, type=any
 ;                       Value of the attribute.
 ;-
-pro CDF_Attribute::GetProperty, $
+pro MrCDF_Attribute::GetProperty, $
 NAME=name, $
 NUMBER=number, $
 TYPE=type, $
@@ -425,9 +425,9 @@ end
 
 
 ;+
-;   The purpose of this method is to parse an attribute from a CDF file.
+;   The purpose of this method is to parse a global attribute from a CDF file.
 ;-
-pro CDF_Attribute::ParseGlobalAttribute
+pro MrCDF_Attribute::ParseGlobalAttribute
     compile_opt strictarr
     
     ;Error handling
@@ -482,7 +482,7 @@ end
 ;+
 ;   The purpose of this method is to parse an attribute from a CDF file.
 ;-
-pro CDF_Attribute::ParseVariableAttribute
+pro MrCDF_Attribute::ParseVariableAttribute
     compile_opt strictarr
     
     ;Error handling
@@ -518,7 +518,7 @@ end
 ;+
 ;   Clean up after the object is destroyed
 ;-
-pro CDF_Attribute::cleanup
+pro MrCDF_Attribute::cleanup
     ;Nothing to clean up
 end
 
@@ -532,7 +532,7 @@ end
 ;       PARENT:             in, required, type=object
 ;                           CDF_File object
 ;-
-function CDF_Attribute::init, attrName, parent
+function MrCDF_Attribute::init, attrName, parent
     compile_opt strictarr
     
     ;Error handling
@@ -578,10 +578,10 @@ end
 ;       PARENT:         CDF_File object.
 ;       SCOPE:          Scope of the attribute.
 ;-
-pro CDF_Attribute__define
+pro MrCDF_Attribute__define
     compile_opt strictarr
     
-    define = { CDF_Attribute, $
+    define = { MrCDF_Attribute, $
                global:    0B, $
                name:      '', $
                number:    0L, $

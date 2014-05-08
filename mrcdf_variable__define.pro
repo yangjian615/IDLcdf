@@ -1,7 +1,7 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       CDF_Variable__Define
+;       MrCDF_Variable__Define
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2014, Matthew Argall                                                   ;
@@ -70,7 +70,7 @@
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
-function CDF_Variable::_OverloadPrint
+function MrCDF_Variable::_OverloadPrint
     on_error, 2
     
     nameStr   = string('Name:',      self.name,      FORMAT='(a-23, a0)')
@@ -144,7 +144,7 @@ end
 ; :Returns:
 ;       ATTRNAMES           Attribute name(s) associated with the variable
 ;-
-function CDF_Variable::GetAttrNames
+function MrCDF_Variable::GetAttrNames
     compile_opt strictarr
     on_error, 2
     
@@ -173,17 +173,13 @@ end
 ;                               value is to be returned.
 ;
 ; :Keywords:
-;       DATATYPE:           out, optional, type=string
-;                           CDF datatype of `ATTRVALUE`. Posibilities are: 'CDF_BYTE',
-;                               'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
-;                               'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
-;                               'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR', 'CDF_UINT1',
-;                               'CDF_UINT2', 'CDF_UINT4'.
+;       CDF_TYPE:           out, optional, type=string
+;                           CDF datatype of `ATTRVALUE`.
 ;
 ; :Returns:
 ;       ATTRVALUE:          Value of `ATTRIBUTE`.
 ;-
-function CDF_Variable::GetAttrValue, attribute, $
+function MrCDF_Variable::GetAttrValue, attribute, $
 CDF_TYPE=cdf_type
     compile_opt strictarr
     on_error, 2
@@ -213,7 +209,7 @@ end
 ; :Returns:
 ;       VARNAME:            CDF variable name.
 ;-
-function CDF_Variable::GetName
+function MrCDF_Variable::GetName
     return, self.name
 end
 
@@ -229,7 +225,7 @@ end
 ; :Returns:
 ;       VARNUM:             CDF variable number.
 ;-
-function CDF_Variable::GetNumber, $
+function MrCDF_Variable::GetNumber, $
 ISZVAR=isZvar
     isZvar = self.zvariable
     return, self.number
@@ -275,7 +271,7 @@ end
 ; :Returns:
 ;       VALUE:              Value of the CDF variable.
 ;-
-function CDF_Variable::GetValue, $
+function MrCDF_Variable::GetValue, $
 ;INPUT
 COUNT=count, $
 INTERVAL=interval, $
@@ -324,8 +320,16 @@ end
 ; :Params:
 ;       ATTRNAME:           in, required, type=string
 ;                           Name of the attr
+;
+; :Keywords:
+;       OBJECT:             out, optional, type=object
+;                           Attribute object associated with `ATTRNAME`.
+;
+; :Returns:
+;       TF_HAS:             Returns true (1) if the variable has the attribute and
+;                               false (0) if not.
 ;-
-function CDF_Variable::HasAttr, attrName, $
+function MrCDF_Variable::HasAttr, attrName, $
 OBJECT=object
     compile_opt strictarr
     on_error, 2
@@ -362,7 +366,7 @@ end
 ;       DIM:            out, optional, type=lonarr
 ;                       Dimension sizes of the data.
 ;-
-pro CDF_Variable::GetProperty, $
+pro MrCDF_Variable::GetProperty, $
 NAME=name, $
 NUMBER=number, $
 CDF_TYPE=cdf_type, $
@@ -390,18 +394,19 @@ end
 ;   The purpose of this method is to load metadata associated with each variable in the
 ;   CDF file.
 ;-
-pro CDF_Variable::ParseVariable
+pro MrCDF_Variable::Parse
     compile_opt strictarr
-
-;---------------------------------------------------------------------
-;Catch Errors ////////////////////////////////////////////////////////
-;---------------------------------------------------------------------
+    
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
         void = cgErrorMsg()
         return
     endif
+
+;---------------------------------------------------------------------
+; Variable Info //////////////////////////////////////////////////////
+;---------------------------------------------------------------------
     
     ;Get the parent ID.
     parentID = self.parent -> GetFileID()
@@ -420,7 +425,7 @@ pro CDF_Variable::ParseVariable
     if max(tag_names(varinfo) eq 'PADVALUE') then self.padvalue = ptr_new(varinfo.padvalue)
 
 ;---------------------------------------------------------------------
-;Step Through All of the Attributes //////////////////////////////////
+; Variable Attribute Info ////////////////////////////////////////////
 ;---------------------------------------------------------------------
     ;Clear any attributes that exist. When the attribute object is created, it
     ;will be added to the parent's container. There is no need to destroy the
@@ -437,10 +442,10 @@ pro CDF_Variable::ParseVariable
         if status eq 0 then continue
 
         ;Has the attribute already been discovered? 
-        tf_has = self.parent -> HasVarAttr(attrName, OBJECT=attrObj)
+        tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
         if tf_has eq 0 then begin
-            self.parent -> CreateAttrObj, attrName, /VARIABLE
-            tf_has = self.parent -> HasVarAttr(attrName, OBJECT=attrObj)
+            self.parent -> CreateAttrObj, attrName
+            tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
         endif
 
         ;Add the attribute to the         
@@ -465,7 +470,7 @@ end
 ;                           If set, `VALUE` will be written as a "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE"
 ;-
-pro CDF_Variable::WriteAttrValue, attrName, value, $
+pro MrCDF_Variable::WriteAttrValue, attrName, value, $
 CREATE=create, $
 CDF_EPOCH=cdf_epoch
     compile_opt strictarr
@@ -487,14 +492,14 @@ CDF_EPOCH=cdf_epoch
     if self -> HasAttr(attrName) eq 0 then begin
         
         ;Does the file have the attribute?
-        tf_has = self.parent -> HasVarAttr(attrName, OBJECT=attrObj)
+        tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
         if tf_has then begin
             self.attributes -> Add, attrObj
             
         ;Does the attribute need to be created?
         endif else if keyword_set(create) then begin
-            self.parent -> WriteVarAttrDef, attrName
-            tf_has = self.parent -> HasVarAttr(attrName, OBJECT=attrObj)
+            self.parent -> CreateAttr, attrName, /VARIABLE_SCOPE
+            tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
             self.attributes -> Add, attrObj
             
         ;Cannote write
@@ -511,7 +516,7 @@ end
 ;+
 ;   Clean up after the object is destroyed
 ;-
-pro CDF_Variable::cleanup
+pro MrCDF_Variable::cleanup
     ;Destroy objects
     obj_destroy, self.attributes
     
@@ -526,12 +531,17 @@ end
 ;   Initialization method.
 ;
 ; :Params:
-;       VARNAME:            in, required, type=string
-;                           A valid CDF variable name contained within `PARENT`
-;       PARENT:             in, required, type=object
-;                           CDF_File object reference.
+;       VARNAME:        in, required, type=string
+;                       A valid CDF variable name contained within `PARENT`
+;       PARENT:         in, required, type=object
+;                       CDF_File object reference.
+;
+; :Keywords:
+;       ISZVAR:         out, optional, type=boolean
+;                       Named variable into which the zVariable state is return. 1 (0)
+;                           indicates a zVariable (rVariable).
 ;-
-function CDF_Variable::init, varname, parent, $
+function MrCDF_Variable::init, varname, parent, $
 ISZVAR=isZVar
     compile_opt strictarr
     
@@ -551,7 +561,7 @@ ISZVAR=isZVar
         message, 'Parent must be a scalar object.'
     
     ;Allocate Pointers
-    self.attributes = obj_new('CDF_Container')
+    self.attributes = obj_new('MrCDF_Container')
     
     ;Get the variable number and Z-Variable state
     parentID = parent -> GetFileID()
@@ -564,16 +574,20 @@ ISZVAR=isZVar
     self.zvariable = isZvar
     
     ;Parse the file
-    self -> ParseVariable
+    self -> Parse
 
     return, 1
 end
 
 
 ;+
-; The init method for CDF_Info__DEFINE.PRO
+;   Class definition
 ;
 ; :Hidden:
+;
+; :Params:
+;       CLASS:              out, optional, type=structure
+;                           Class definition structure.
 ;
 ; :Fields:
 ;       PARENT:         CDF_File object.
@@ -588,10 +602,10 @@ end
 ;       MAXREC:         Maximum number of records associated with the data (0-based).
 ;       PADVALUE:       Value used to pad data records.
 ;-
-pro CDF_Variable__define
+pro MrCDF_Variable__define
     compile_opt strictarr
     
-    define = { CDF_Variable, $
+    define = { MrCDF_Variable, $
                parent:     obj_new(), $
                attributes: obj_new(), $
                name:       '', $

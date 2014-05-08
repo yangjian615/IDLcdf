@@ -59,7 +59,7 @@
 ; :Returns:
 ;       RESULTS:            A string to be printed by the PRINT procedure.
 ;-
-function CDF_Container::_OverloadPrint
+function MrCDF_Container::_OverloadPrint
     compile_opt strictarr
     
     ;Error handling
@@ -104,7 +104,7 @@ end
 ; :Returns:
 ;       OBJMATCH:           The file object that matches the file name.
 ;-
-function CDF_Container::FindByID, id, $
+function MrCDF_Container::FindByID, id, $
 COUNT=count
     compile_opt strictarr
     on_error, 2
@@ -162,7 +162,7 @@ end
 ; :Returns:
 ;       FILEOBJ:            The file object that matches the file name.
 ;-
-function CDF_Container::FindByName, searchString, $
+function MrCDF_Container::FindByName, searchString, $
 COUNT=count, $
 FOLD_CASE=fold_case, $
 REGEX=regex, $
@@ -215,8 +215,8 @@ end
 ;       CLASS:          out, optional, type=structure
 ;                       The class definition structure.
 ;-
-pro CDF_Container__Define, class
+pro MrCDF_Container__Define, class
     
-    class = {CDF_Container, $
+    class = {MrCDF_Container, $
              inherits MrIDL_Container}
 end
