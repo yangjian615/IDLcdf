@@ -65,13 +65,22 @@
 ;       2014/03/07  -   Written by Matthew Argall
 ;       2014/03/22  -   AddAttr now tries to add an existing variable attribute first.
 ;                           It then checks if one is to be created. - MRA
+;       2014/05/08  -   Added the Quiet property to suppress warnings from the CDF DLM. - MRA
+;       2014/05/09  -   Added the _OverloadHelp method. - MRA
 ;-
 ;*****************************************************************************************
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
 function MrCDF_Variable::_OverloadPrint
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, ''
+    endif
     
     nameStr   = string('Name:',      self.name,      FORMAT='(a-23, a0)')
     numberStr = string('Number:',    self.number,    FORMAT='(a-20, i0)')
@@ -137,16 +146,71 @@ function MrCDF_Variable::_OverloadPrint
     return, output
 end
 
+;+
+;   Provide information when the PRINT procedure is called.
+;-
+function MrCDF_Variable::_OverloadHelp, varname
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, ''
+    endif
+    
+    ;Dimensions
+    if n_elements(self.dim) eq 1 $
+        then dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec, 2) + ']' $
+        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec, 2) + ']'
+    
+    ;Variable type
+    var_type = self.zvariable ? 'zVar' : 'rVar'
+    
+    ;Help string
+    outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
+                    FORMAT='(i3, 2x, a-20, 2x, a4, 2x, a14, 2x, a0)')
+
+    ;Allocate memory for the attribute help string    
+    nAttrs = self.attributes -> Count()
+    attrHelp    = strarr(1, nAttrs+1)
+    attrHelp[0] = '  ATTRIBUTES:'
+    
+    ;Get help from the attributes.
+    allAttrs = self.attributes -> Get(/ALL)
+    for i = 0, nAttrs - 1 do attrHelp[0,i+1] = '    ' + allAttrs[i] -> _OverloadHelp(VARIABLE=self.name)
+    
+    ;Concatenate
+    outStr = [[outStr], [attrHelp]]
+    return, outStr
+end
+
 
 ;+
 ;   Return the names of the attributes associated with this variable.
 ;
+; :Keywords:
+;       COUNT:              out, optional, type=integer
+;                           Number of variable attributes associated with `VARIABLE`.
+;       ERROR:              out, optional, type=integer
+;                           Named variable to recieve the error code. 0 indicates no
+;                               error. If present, the error message will be suppressed.
+;
 ; :Returns:
 ;       ATTRNAMES           Attribute name(s) associated with the variable
 ;-
-function MrCDF_Variable::GetAttrNames
+function MrCDF_Variable::GetAttrNames, $
+COUNT=count, $
+ERROR=the_error
     compile_opt strictarr
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        return, ''
+    endif
     
     ;Get all of the attributes
     count = self.attributes -> Count()
@@ -154,7 +218,7 @@ function MrCDF_Variable::GetAttrNames
     
     ;Get all of the names
     attrNames = strarr(count)
-    allAttrs = self -> Get(/ALL)
+    allAttrs = self.attributes -> Get(/ALL)
     for i = 0, count - 1 do attrNames[i] = allAttrs[i] -> GetName()
     
     ;Return a scalar
@@ -182,7 +246,14 @@ end
 function MrCDF_Variable::GetAttrValue, attribute, $
 CDF_TYPE=cdf_type
     compile_opt strictarr
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
     
     ;Get the attribute object.
     case size(attribute, /TNAME) of
@@ -400,6 +471,7 @@ pro MrCDF_Variable::Parse
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
+        if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
         void = cgErrorMsg()
         return
     endif
@@ -432,6 +504,10 @@ pro MrCDF_Variable::Parse
     ;old attributes here, as the parent will do that when it is destroyed.
     self.attributes -> Remove, /ALL
 
+    ;Quiet
+    thisQuiet = !quiet
+    !quiet = self.quiet
+
     ;Variable attributes *should* be /after/ global attributes, but I have seen
     ;a number of files where this is not the case. Thus, check each attribute.
     fileInfo = cdf_inquire(parentID) 
@@ -451,6 +527,32 @@ pro MrCDF_Variable::Parse
         ;Add the attribute to the         
         self.attributes -> Add, attrobj
     endfor
+    
+    ;Unquiet
+    !quiet = thisQuiet
+end
+
+
+;+
+;   Set properties of the object.
+;
+; :Keywords:
+;       QUIET:          in, optional, type=boolean
+;                       If set, warning messages from the CDF DLM will not be output.
+;-
+pro MrCDF_Variable::SetProperty, $
+QUIET=quiet
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
 end
 
 
@@ -542,7 +644,8 @@ end
 ;                           indicates a zVariable (rVariable).
 ;-
 function MrCDF_Variable::init, varname, parent, $
-ISZVAR=isZVar
+ISZVAR=isZVar, $
+QUIET=quiet
     compile_opt strictarr
     
     ;Error handling
@@ -562,6 +665,7 @@ ISZVAR=isZVar
     
     ;Allocate Pointers
     self.attributes = obj_new('MrCDF_Container')
+    self.quiet = n_elements(quiet) eq 0 ? 1 : keyword_set(quiet)
     
     ;Get the variable number and Z-Variable state
     parentID = parent -> GetFileID()
@@ -590,26 +694,29 @@ end
 ;                           Class definition structure.
 ;
 ; :Fields:
-;       PARENT:         CDF_File object.
 ;       ATTRIBUTES:     CDF_Container object for holding variable attributes.
-;       NAME:           CDF variable name.
-;       NUMBER:         CDF variable number.
-;       DATATYPE:       CDF datatype.
-;       NELEMENTS:      Number of elements of the CDF variable data.
-;       RECVAR:         Record variance of the CDF variable data.
+;       CDF_TYPE:       CDF datatype.
 ;       DIMVAR:         Dimensional variance of the CDF variable data.
-;       ZVARIABLE:      Indicates that the variable is a z-variable, not an r-variable.
 ;       MAXREC:         Maximum number of records associated with the data (0-based).
+;       NAME:           CDF variable name.
+;       NELEMENTS:      Number of elements of the CDF variable data.
+;       NUMBER:         CDF variable number.
 ;       PADVALUE:       Value used to pad data records.
+;       PARENT:         CDF_File object.
+;       QUIET:          Suppress warnings from the CDF DLM.
+;       RECVAR:         Record variance of the CDF variable data.
+;       ZVARIABLE:      Indicates that the variable is a z-variable, not an r-variable.
 ;-
 pro MrCDF_Variable__define
     compile_opt strictarr
     
     define = { MrCDF_Variable, $
+               inherits IDL_Object, $
                parent:     obj_new(), $
                attributes: obj_new(), $
                name:       '', $
                number:     0L, $
+               quiet:      0B, $
                
                ;VAR_INQ
                cdf_type:   '', $

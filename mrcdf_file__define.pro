@@ -117,6 +117,10 @@
 ;                           the VARIABLES property into RVARS and ZVARS. - MRA
 ;       2014/05/07  -   Combined global and variable attributes into a single container
 ;                           to mimic CDF file structure. - MRA
+;       2014/05/08  -   REC_START and REC_END can be given singley. Added the Quiet
+;                           property to suppress warnings from the CDF DLM. - MRA
+;       2014/05/09  -   Added DECODING, ENCODING, and MAJORITY properties. Added the
+;                           _OverloadHelp method. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -132,7 +136,7 @@ function MrCDF_File::_OverloadPrint
         void = cgErrorMsg()
         return, ''
     endif
-    
+
     ;Has the file been parsed?
     if self.isParsed eq 0 then self -> ParseFile
     
@@ -187,6 +191,95 @@ function MrCDF_File::_OverloadPrint
               [zVarStr]]
     
     return, output
+end
+
+
+;+
+;   Provide information when the PRINT procedure is called.
+;-
+function MrCDF_File::_OverloadHelp, varname
+    compile_opt strictarr
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, ''
+    endif
+
+    ;Has the file been parsed?
+    if self.isParsed eq 0 then self -> ParseFile
+    
+    ;Number of global attributes
+    self -> GetProperty, NGATTRS=gAttrCount, NVATTRS=vAttrCount, $
+                         NRVARS=rVarCount, NZVARS=zVarCount, MAJORITY=majority, $
+                         ENCODING=encoding, DECODING=decoding
+    
+    ;File information
+    fileStr   = string('FILENAME:',                self.filename, FORMAT='(a-30, a0)')
+    nGAttrStr = string('  # Global Attributes:',   gAttrCount,    FORMAT='(a-30, i0)')
+    nVAttrStr = string('  # Variable Attributes:', vAttrCount,    FORMAT='(a-30, i0)')
+    nRVarStr  = string('  # R-Variables:',         rVarCount,     FORMAT='(a-30, i0)')
+    nZVarStr  = string('  # Z-Variables:',         zVarCount,     FORMAT='(a-30, i0)')
+    majorStr  = string('  Majority:',              majority,      FORMAT='(a-30, a0)')
+    codeStr   = string('  Encoding/Decoding:',  encoding + '/' + decoding, FORMAT='(a-30, a0)')
+    
+    ;Output string for the file
+    helpOut = [[fileStr], $
+               [nGAttrStr], $
+               [nVAttrStr], $
+               [nRVarStr], $
+               [nZVarStr], $
+               [majorStr], $
+               [codeStr]]
+    
+    ;Global Attributes
+    if gAttrCount gt 0 then begin
+        gAttrHelp    = strarr(1, gAttrCount+1)
+        gAttrHelp[0] = 'GLOBAL ATTRIBUTES:'
+    
+        ;Get help from the attributes.
+        allGAttrs = self.attrs -> Get(/ALL, COUNT=nAttrs)
+        for i = 0, nAttrs - 1 do begin
+            allGAttrs[i] -> GetProperty, SCOPE=scope
+            if strpos(scope, 'GLOBAL') eq -1 then continue
+        
+            gAttrHelp[0,i+1] = '  ' + allGAttrs[i] -> _OverloadHelp()
+        endfor
+        
+        helpOut = [[helpOut], [gAttrHelp]]
+    endif
+    
+    ;R-Variables
+    if rVarCount gt 0 then begin
+        rVarHelp    = strarr(1, zVarCount+1)
+        rVarHelp[0] = 'R-VARIABLES:'
+        
+        ;Get help from the variables
+        allRVars = self.rVars -> Get(/ALL, COUNT=rVarCount)
+        for i = 0, rVarCount - 1 do rVarHelp[0,i+1] = '  ' + allRVars[i] -> _OverloadHelp()
+        
+        ;Concatenate
+        helpOut = [[helpOut], [zVarHelp]]
+    endif
+    
+    ;Z-Variables
+    if zVarCount gt 0 then begin
+        zVarHelp = 'Z-VARIABLES:'
+
+        ;Get help from the variables
+        allZVars = self.zVars -> Get(/ALL, COUNT=zVarCount)
+        for i = 0, zVarCount - 1 do begin
+            zTemp = '  ' + allZVars[i] -> _OverloadHelp()
+            zVarHelp = [[zVarHelp], [zTemp]]
+        endfor
+        
+        ;Concatenate
+        helpOut = [[helpOut], [zVarHelp]]
+    endif
+    
+    return, helpOut
 end
 
 
@@ -435,7 +528,7 @@ pro MrCDF_File::CreateAttrObj, attrName
     endif
     
     ;Create the attribute and add it to the container.
-    attrObj = obj_new('MrCDF_Attribute', attrName, self)
+    attrObj = obj_new('MrCDF_Attribute', attrName, self, QUIET=self.quiet)
     
     ;Add the attribute to the proper container
     self.attrs -> Add, attrObj
@@ -463,7 +556,7 @@ pro MrCDF_File::CreateVarObj, varName
     endif
     
     ;Create the attribute and add it to the container.
-    varObj = obj_new('MrCDF_Variable', varName, self, isZVar=isZVar)
+    varObj = obj_new('MrCDF_Variable', varName, self, isZVar=isZVar, QUIET=self.quiet)
     
     ;Add to the proper container.
     if isZVar $
@@ -889,21 +982,46 @@ end
 ;                               variable names are found, the empty string is returned.
 ;-
 function MrCDF_File::GetVarNames, $
-COUNT=nVars
+ALL=all, $
+COUNT=nVars, $
+RVARIABLE=rVariable
     compile_opt strictarr
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        return, ''
+    endif
 
     ;File must be parsed first
     if self.isParsed eq 0 then ParseFile
+    
+    ;Defaults
+    all = keyword_set(all)
+    rVariable = all eq 1 ? 1 : keyword_set(rVariable)
+    zVariable = all eq 1 ? 1 : ~rVariable
 
     ;Count the number of global attributes
-    nVars = self.variables -> Count()
-    if nVars eq 0 then return, ''
+    nRVars = (rVariable eq 0) ? 0 : self.rVars -> Count()
+    nZVars = (zVariable eq 0) ? 0 : self.zVars -> Count()
+    nVars  = nRVars + nZVars
 
     ;Get all of the global attribute names
     varNames = strarr(nVars)
-    allVars  = self.variables -> Get(/ALL)
-    for i = 0, nVars-1 do varNames[i] = allVars[i] -> GetName()
+    
+    ;R-Variables
+    if nRVars gt 0 then begin
+        allR = self.rVars -> Get(/ALL)
+        for i = 0, nRVars-1 do varNames[i] = allR[i] -> GetName()
+    endif
+    
+    ;Z-Variables
+    if nZVars gt 0 then begin
+        allZ = self.zVars -> Get(/ALL)
+        for i = 0, nZVars-1 do varNames[nRVars+i] = allZ[i] -> GetName()
+    endif
 
     ;Return a scalar?
     if nVars eq 1 then varNames = varNames[0]
@@ -922,14 +1040,25 @@ end
 ; :Keywords:
 ;       COUNT:              out, optional, type=integer
 ;                           Number of variable attributes associated with `VARIABLE`.
+;       ERROR:              out, optional, type=integer
+;                           Named variable to recieve the error code. 0 indicates no
+;                               error. If present, the error message will be suppressed.
 ;
 ; :Returns:
 ;       ATTRNAMES:          Name(s) of the variable attributes associated with `VARIABLE`
 ;-
 function MrCDF_File::GetVarAttrNames, variable, $
-COUNT=varAttrCount
+COUNT=varAttrCount, $
+ERROR=the_error
     compile_opt strictarr
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        return, ''
+    endif
 
     ;File must be parsed first
     if self.isParsed eq 0 then ParseFile
@@ -939,7 +1068,8 @@ COUNT=varAttrCount
         'OBJREF': varObj = variable
         
         'STRING': begin
-            varObj = self.variables -> FindByName(variable, COUNT=vAttrCount)
+            varObj = self.zVars -> FindByName(variable, COUNT=vAttrCount)
+            if vAttrCount eq 0 then varObj = self.rVars -> FindByName(variable, COUNT=vAttrCount)
             if vAttrCount eq 0 then $
                 message, 'Cannot find global attribute with name "' + variable + '".'
             if obj_valid(varObj) eq 0 then $
@@ -950,7 +1080,8 @@ COUNT=varAttrCount
     endcase
 
     ;Get the value
-    varAttrNames = varObj -> GetAttrNames(COUNT=varAttrCount)
+    varAttrNames = varObj -> GetAttrNames(COUNT=varAttrCount, ERROR=the_error)
+    if the_error ne 0 then message, /REISSUE_LAST
     
     return, varAttrNames
 end
@@ -1094,10 +1225,16 @@ end
 ;   Get properties
 ;
 ; :Keywords:
+;       DECODING:           out, optional, type=string
+;                           Decoding type for the CDF file.
+;       ENCODING:           out, optional, type=string
+;                           Encoding type for the CDF file.
 ;       FILENAME:           out, optional, type=string
 ;                           Name of the CDF file.
-;       FILEID:              out, optional, type=long
+;       FILEID:             out, optional, type=long
 ;                           CDF file identifier.
+;       MAJORITY:           out, optional, type=string
+;                           Majority using in the file: {"ROW_MAJOR" | "COL_MAJOR"}
 ;       NATTS:              out, optional, type=integer
 ;                           Total number of attributes within the file
 ;       NGATTS:             out, optional, type=integer
@@ -1114,8 +1251,11 @@ end
 ;                           Flag indicating that the file is writeable (1) or read-only (0).
 ;-
 pro MrCDF_File::GetProperty, $
+DECODING=decoding, $
+ENCODING=encoding, $
 FILENAME=filename, $
 fileID=fileID, $
+MAJORITY=majority, $
 NATTRS=nAttrs, $
 NGATTRS=nGAttrs, $
 NVATTRS=nVAttrs, $
@@ -1126,8 +1266,11 @@ WRITEABLE=writeable
     compile_opt strictarr
     on_error, 2
     
+    if arg_present(decoding)  then decoding  = self.decoding
+    if arg_present(encoding)  then encoding  = self.encoding
     if arg_present(filename)  then filename  = self.filename
     if arg_present(fileID)    then fileID    = self.fileID
+    if arg_present(majority)  then majority  = self.majority
     if arg_present(nAttrs)    then nAttrs    = self.attrs -> Count()
     if arg_present(nGAttrs)   then void      = self -> GetAttrNames(COUNT=nGAttrs)
     if arg_present(nVAttrs)   then void      = self -> GetAttrNames(COUNT=nVAttrs, /VARIABLE_SCOPE)
@@ -1500,6 +1643,14 @@ pro MrCDF_File::ParseFile
     self.rVars -> Remove, /ALL, /DESTROY
 
 ;-----------------------------------------------------
+; File Info \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    file_inq = cdf_inquire(self.fileID)
+    self.encoding = file_inq.encoding
+    self.decoding = file_inq.decoding
+    self.majority = file_inq.majority
+
+;-----------------------------------------------------
 ; Global Attribute and Variable Info \\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     fileInfo = cdf_inquire(self.fileID)
@@ -1598,7 +1749,7 @@ end
 ;                               into account `INTERVAL` and `OFFSET`.
 ;       INTERVAL:           in, optional, type=intarr, default=1 for each dimension
 ;                           Interval between values in each dimension.
-;       PATTERN:            in, optional, type=boolean, default=0
+;       PATTERN:            in, optional, type=boolean, default="%Y-%M-%dT%H:%m:%S%f"
 ;                           If set, then `REC_START` and `REC_END` are that will be parsed
 ;                               into CDF epoch values. PATTERN describes how the times
 ;                               should be parsed and accepts any pattern recognized by
@@ -1668,6 +1819,7 @@ PADVALUE=padvalue
     ;Was a time range given?
     time = keyword_set(time)
     if n_elements(pattern) gt 0 then time = 1
+    if MrIsA(rec_start, 'STRING') && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%f"
     
     ;Get the variable object
     tf_has = self -> HasVar(varName, OBJECT=varObj)
@@ -1675,28 +1827,82 @@ PADVALUE=padvalue
         message, 'Variable "' + varName + '" is not found in the file.'
 
 ;-----------------------------------------------------
-;Record Range \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+; Time Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-    
-    ;Time interval given?
+    ;Flag indicating that the variable given represents time.
+    isTime = 0
     if time eq 1 then begin
-        ;Get the name of the epoch variable
-        tVarName = varObj -> GetAttrValue('DEPEND_0')
+    ;-----------------------------------------------------
+    ; Get Time \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    ;-----------------------------------------------------
+        varObj -> GetProperty, CDF_TYPE=cdf_type
+
+        ;Time variable
+        if max(cdf_type eq ['CDF_EPOCH', 'CDF_EPOCH16', 'CDF_TIME_TT2000']) eq 1 then begin
+            isTime   = 1B
+            depend_0 = self -> GetVarData(varName)
+            
+        endif else begin
+            ;Search for DEPEND_0
+            tf_has = varObj -> HasAttr('DEPEND_0')
+            if tf_has eq 0 then message, 'No DEPEND_0 attribute exists. Cannot select time range.'
+    
+            ;Get the name of the epoch variable
+            tVarName = varObj -> GetAttrValue('DEPEND_0')
         
-        ;Read the time and figure out its epoch type.
-        depend_0 = self -> GetVarData(tVarName, CDF_TYPE=epoch_type)
+            ;Read the time and figure out its epoch type.
+            depend_0 = self -> GetVarData(tVarName, CDF_TYPE=epoch_type)
+        endelse
 
-        ;If time strings were given, convert them to epoch values
-        if n_elements(pattern) gt 0 $
-            then epoch_range = MrCDF_Epoch_Parse([rec_start, rec_end], PATTERN=pattern, EPOCH_TYPE=epoch_type) $
-            else epoch_range = [rec_start, rec_end]
+    ;-----------------------------------------------------
+    ; Convert Interval to Epoch Values \\\\\\\\\\\\\\\\\\\
+    ;-----------------------------------------------------
+        if MrIsA(rec_start, 'STRING') $
+            then epoch_start = MrCDF_Epoch_Parse(rec_start, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
+            else epoch_start = n_elements(rec_start) gt 0 ? rec_start : depend_0[0]
+                
+        if MrIsA(rec_end, 'STRING') $
+            then epoch_end = MrCDF_Epoch_Parse(rec_end, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
+            else epoch_end = n_elements(rec_end) gt 0 ? rec_end : depend_0[n_elements(depend_0)-1]
 
-        ;Get the record range and record count
-        comp = MrCDF_Epoch_Compare(depend_0, epoch_range[0], epoch_range[1])
-        rec_start_out = min(where(comp, rec_count))
-        if rec_count eq 0 then message, 'No records found between REC_START and REC_END.'
+    ;-----------------------------------------------------
+    ; Find Record Range \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    ;-----------------------------------------------------
+        if n_elements(epoch_start) gt 0 && n_elements(epoch_end) gt 0 then begin
+            comp = MrCDF_Epoch_Compare(depend_0, epoch_start, epoch_end)
+            iMatch = where(comp eq 1, rec_count)
+            if rec_count eq 0 $
+                then message, 'No records found between REC_START and REC_END.' $
+                else rec_start_out = min(iMatch)
+        
+        ;Only one endpoint given.
+        endif else begin
+            if n_elements(epoch_start) gt 0 then begin
+                comp = MrCDF_Epoch_Compare(depend_0, epoch_start)
+                iMatch = where(comp ge 0, rec_count)
+                if rec_count eq 0 $
+                    then message, 'No records found between REC_START and REC_END.' $
+                    else rec_start_out = min(iMatch)
+            endif else begin
+                rec_start_out = 0
+            endelse
 
-    ;Record interval given?
+            if n_elements(epoch_end) gt 0 then begin
+                comp = MrCDF_Epoch_Compare(depend_0, epoch_end)
+                iMatch = where(comp le 0, rec_count)
+                if rec_count eq 0 $
+                    then message, 'No records found between REC_START and REC_END.' $
+                    else rec_end_out = max(iMatch)
+            endif else begin
+                rec_end_out = n_elements(depend_0) - 1
+            endelse
+            
+            rec_count = rec_end_out - rec_start_out + 1
+        endelse
+
+;-----------------------------------------------------
+; Record Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     endif else if n_elements(rec_end) gt 0 then begin
         rec_start_out = rec_start
         rec_count     = rec_end - rec_start + 1
@@ -1713,10 +1919,14 @@ PADVALUE=padvalue
     endif
 
     ;Get the data
-    data = varObj -> GetValue(COUNT=count, INTERVAL=interval, OFFSET=offset, $
-                              REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
-                              REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
-                              FILLVALUE=fillvalue, PADVALUE=padvalue)
+    if isTime eq 0 then begin
+        data = varObj -> GetValue(COUNT=count, INTERVAL=interval, OFFSET=offset, $
+                                  REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                                  REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
+                                  FILLVALUE=fillvalue, PADVALUE=padvalue)
+    endif else begin
+        data = depend_0[rec_start_out:rec_start_out+rec_count-1]
+    endelse
     
     ;DEPEND_0
     if arg_present(depend_0) then begin
@@ -1836,6 +2046,29 @@ VARIABLE=variable
                          SET_GZIP_LEVEL=gzip_level
     endelse
     
+end
+
+
+;+
+;   Set properties of the object.
+;
+; :Keywords:
+;       QUIET:          in, optional, type=boolean
+;                       If set, warning messages from the CDF DLM will not be output.
+;-
+pro MrCDF_File::SetProperty, $
+QUIET=quiet
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
 end
 
 
@@ -2045,9 +2278,6 @@ end
 ;                           Array indices within the specified record(s) at which to
 ;                               begin writing. OFFSET is a 1-dimensional array
 ;                               containing one element per CDF dimension.
-;       QUIET:              in, optional, type=boolean, default=1
-;                           If set, warning messages from the CDF DLM will not be ouput
-;                               to the command window. - MRA
 ;       REC_COUNT:          in, optional, type=long, default=maxrec+1
 ;                           Number of records to be read.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
@@ -2059,7 +2289,6 @@ pro MrCDF_File::WriteVar, variable, data, $
 COUNT=count, $
 INTERVAL=interval, $
 OFFSET=offset, $
-QUIET=quiet, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
 ;Create Variable?
@@ -2085,7 +2314,6 @@ ZVARIABLE=zvariable
     
     ;Defaults
     create = keyword_set(create)
-    quiet = (n_elements(quiet) eq 0) ? 1 : keyword_set(quiet)
     if n_elements(datatype) eq 0 then datatype = size(data, /TNAME)
     
 ;-----------------------------------------------------
@@ -2149,7 +2377,7 @@ ZVARIABLE=zvariable
     
     ;Prevent warnings from the CDF DLM.
     quiet_in = !Quiet
-    !Quiet = quiet
+    !Quiet = self.quiet
 
     ;Write the data
     cdf_varput, self.fileID, varName, data, COUNT=count, INTERVAL=interval, OFFSET=offset, $
@@ -2200,6 +2428,9 @@ end
 ;                                      box was pushed).
 ;                               1 - A file was chosen
 ;                               # - The index of the error returned by Catch
+;       QUIET:              in, optional, type=boolean, default=1
+;                           If set, annoying warnings from the CDF DLM  will be suppressed.
+;                               This is the default.
 ;       _REF_EXTRA:         in, optional, type=any
 ;                           Any keyword accepted by the Open method is also accepted
 ;                               via keyword inheritance.
@@ -2211,9 +2442,10 @@ end
 ;-
 function MrCDF_File::init, filename, $
 CREATE=create, $
-DIALOG_PARENT = dialog_parent, $
-DIRECTORY = directory, $
-FILE_STATUS = file_status, $
+DIALOG_PARENT=dialog_parent, $
+DIRECTORY=directory, $
+FILE_STATUS=file_status, $
+QUIET=quiet, $
 _REF_EXTRA=extra
     compile_opt strictarr
     
@@ -2228,7 +2460,8 @@ _REF_EXTRA=extra
     ;Defaults
     create = keyword_set(create)
     
-    ;Allocate Pointers
+    ;Set Properties
+    self.quiet = n_elements(quiet) eq 0 ? 1 : keyword_set(quiet)
     self.attrs = obj_new('MrCDF_Container')
     self.rVars = obj_new('MrCDF_Container')
     self.zVars = obj_new('MrCDF_Container')
@@ -2259,21 +2492,30 @@ end
 ;                           Class definition structure.
 ;
 ; :Fields:
+;       ATTRS:              Container of attribute objects.
+;       DECODING:           Decoding type for the CDF file.
+;       ENCODING:           Encoding type for the CDF file.
 ;       FILENAME:           The name of the CDF file begin read.
 ;       FILEID:             The CDF ID number of the file being read.
 ;       ISPARSED:           Indicates that the file has been parsed.
-;       ATTRS:              Container of attribute objects.
+;       MAJORITY:           Majority using in the file.
+;       QUIET:              Suppress warnings from the CDF DLM.
 ;       RVARS:              Container of rVariables.
-;       ZVARS:              Container of zVariables.
 ;       WRITEABLE:          Indicates that the file is writeable.
+;       ZVARS:              Container of zVariables.
 ;-
 pro MrCDF_File__define, class
     compile_opt strictarr
     
     define = { MrCDF_File, $
+               inherits IDL_Object, $
+               decoding:  '', $
+               encoding:  '', $
                filename:  '', $
                fileID:    0L, $
                isParsed:  0B, $
+               majority:  '', $
+               quiet:     0B, $
                attrs:     obj_new(), $
                rVars:     obj_new(), $
                zVars:     obj_new(), $

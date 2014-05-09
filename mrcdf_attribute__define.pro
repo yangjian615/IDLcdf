@@ -68,16 +68,28 @@
 ;       2014/03/31  -   Removed all variable-related properties and the parse method,
 ;                           since variable attributes are associated with more than one
 ;                           variable. Added the ENTRYMASK to the Get*Value methods. - MRA
+;       2014/05/08  -   Added the Quiet property to suppress warnings from the CDF DLM. - MRA
+;       2014/05/09  -   Error in array creation when no GEntries exist. Fixed. Added the
+;                           _OverloadHelp method. - MRA
 ;-
 ;*****************************************************************************************
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
 function MrCDF_Attribute::_OverloadPrint
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
     
     ;Get the entry information
-    entryMask = self -> GetEntryMask(CDF_TYPE=cdf_type, MAXGENTRY=maxGEntry, NUMGENTRIES=numGEntries)
+    entryMask = self -> GetEntryMask(CDF_TYPE=cdf_type, MAXGENTRY=maxGEntry, $
+                                     NUMGENTRIES=numGEntries, ERROR=the_error)
+    if the_error ne 0 then message, /REISSUE_LAST
     
     nameStr     = string('Name:',        self.name,   FORMAT='(a-23, a0)')
     numberStr   = string('Number:',      self.number, FORMAT='(a-20, i0)')
@@ -89,18 +101,51 @@ function MrCDF_Attribute::_OverloadPrint
     
     ;Append all of the strings together. Make a column so each is
     ;printed on its own line.
-    output = [[nameStr], $
-              [numberStr], $
-              [scopeStr], $
-              [maxEntryStr], $
-              [numEntryStr], $
-              [typeStr], $
-              [maskStr]]
+    output = [ [nameStr], $
+               [numberStr], $
+               [scopeStr], $
+               [maxEntryStr], $
+               [numEntryStr], $
+               [typeStr], $
+               [maskStr]]
     
     ;Offset everything form the name
     output[0,1:*] = '   ' + output[0,1:*]
     
     return, output
+end
+
+;+
+;   Provide information when the PRINT procedure is called.
+;-
+function MrCDF_Attribute::_OverloadHelp, varname, $
+VARIABLE=variable
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, ''
+    endif
+
+    ;Get the attribute value    
+    if self.global eq 1 $
+        then value = self -> GetGlobalAttrValue() $
+        else if n_elements(variable) gt 0 then value = self -> GetVarAttrValue(variable)
+        
+    ;Value -> String
+    case n_elements(value) of
+        0: valueStr = ''
+        1: valueStr = strtrim(value, 2)
+        else: valueStr = '[' + strjoin(strtrim(value, 2), ', ') + ']'
+    endcase
+    
+    ;Help string.
+    outStr = string(self.number, self.name, self.scope, valueStr, $
+                    FORMAT='(i3, 2x, a-20, 2x, a14, 2x, a0)')
+    
+    return, outStr
 end
 
 
@@ -111,6 +156,9 @@ end
 ;   of 1s and 0s indicated if a value exists at the corresponding gEntryNum.
 ;
 ; :Keywords:
+;       ERROR:              out, optional, type=integer
+;                           Named variable to recieve the error code. 0 indicates no
+;                               error. If present, the error message will be suppressed.
 ;       MAXGENTRY:          in, optional, type=long
 ;                           Highest global entry index associated with the attribute.
 ;       NUMGENTRIES:        in, optional, type=long
@@ -118,17 +166,27 @@ end
 ;                               be less than `MAXGENTRY`+1.
 ;
 ; :Returns:
-;       ATTRVALUE:          Value(s) of the attribute.
+;       ENTRYMASK:          Array of 1s and 0s indicating which which global entry numbers
+;                               contain values. -1 is returned if no global entries exits.
 ;-
 function MrCDF_Attribute::GetEntryMask, $
 CDF_TYPE=cdf_type, $
+ERROR=the_error, $
 MAXGENTRY=maxGEntry, $
 MAXRENTRY=maxREntry, $
 MAXZENTRY=maxZEntry, $
 NUMGENTRIES=numGEntries, $
 NUMRENTRIES=numREntries, $
 NUMZENTRIES=numZEntries
-    on_error, 2
+    compile_opt strictarr
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        return, -1
+    endif
     
     ;Get the CDF file ID
     fileID = self.parent -> GetFileID()
@@ -143,10 +201,16 @@ NUMZENTRIES=numZEntries
         numGEntries = attr_info.numGEntries
         maxGEntry   = attr_info.maxGEntry
         
+        ;No entries?
+        if maxGEntry lt 0 then begin
+            cdf_type = ''
+            return, -1
+        endif
+
         ;Build the mask
         entryMask = bytarr(maxGEntry+1)
         gAttrCount = 0L
-        if doCDFType then cdf_type  = strarr(maxGEntry+1)
+        if doCDFType then cdf_type = strarr(maxGEntry+1)
         
         ;Step through each entry
         for thisGEntry = 0, maxGEntry do begin
@@ -159,7 +223,7 @@ NUMZENTRIES=numZEntries
                     cdf_attget, fileID, self.name, thisGEntry, value, CDF_TYPE=type
                     cdf_type[gAttrCount]  = type
                 endif
-                
+
                 ;Unmask the value
                 entryMask[thisGEntry] = 1B
                 gAttrCount++
@@ -224,6 +288,11 @@ end
 ;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `ATTRVALUE`. Not all attribute values need
 ;                               to be of the same datatype.
+;       COUNT:              out, optional, type=integer
+;                           Number of entry values returned.
+;       ERROR:              out, optional, type=integer
+;                           Named variable to recieve the error code. 0 indicates no
+;                               error. If present, the error message will be suppressed.
 ;       ENTRYMASK:          out, optional, type=bytarr
 ;                           An array of 1's and 0's indicating whether or not a value
 ;                               has been written to the global entry number corresponding
@@ -241,9 +310,18 @@ end
 ;-
 function MrCDF_Attribute::GetGlobalAttrValue, entryNum, $
 CDF_TYPE=cdf_type, $
+COUNT=nEntries, $
+ERROR=the_error, $
 ENTRYMASK=entryMask, $
 ZVARIABLE=zvariable
-    on_error, 2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        return, -1
+    endif
     
     ;Get the CDF file ID
     fileID = self.parent -> GetFileID()
@@ -281,14 +359,19 @@ ZVARIABLE=zvariable
     endif else begin
         ;Get entry information
         cdf_control, fileID, ATTRIBUTE=self.name, GET_ATTR_INFO=attr_info
-        nEntries   = attr_info.maxGEntry+1
-        cdf_type   = strarr(nEntries)
-        entryNum   = lindgen(nEntries)
-        gEntryMask = bytarr(nEntries)
+        nEntries = attr_info.numGEntries
+        maxGEntry = attr_info.maxGEntry
+        
+        ;Return if there are no entries
+        if nEntries eq 0 then return, -1 
+        
+        cdf_type   = strarr(maxGEntry+1)
+        entryNum   = lindgen(maxGEntry+1)
+        gEntryMask = bytarr(maxGEntry+1)
     
         gAttrCount = 0
         gIndex = 0
-        while (gAttrCount lt attr_info.numGEntries) && (gIndex le attr_info.maxGEntry) do begin
+        while (gAttrCount lt nEntries) && (gIndex le maxGEntry) do begin
             thisGEntry = entryNum[gIndex]
     
             ;Check if there is a value at this entry
@@ -321,10 +404,10 @@ ZVARIABLE=zvariable
     
     ;Return a scalar?
     if nValues eq 1 then begin
-        attrValue = attrValueList -> Get_Item(0)
-        cdf_type  = cdf_type[0]
-        entryNum  = entryNum[0]
-        entryMask = entryMask[0]
+        attrValue   = attrValueList -> Get_Item(0)
+        cdf_type    = cdf_type[0]
+        entryNum    = entryNum[0]
+        gEentryMask = gEntryMask[0]
         
     ;Return an array or a list?
     endif else begin
@@ -362,15 +445,31 @@ end
 ;-
 function MrCDF_Attribute::GetVarAttrValue, varName, $
 CDF_TYPE=cdf_type
-    on_error, 2
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
+        void = cgErrorMsg()
+        return, -1
+    endif
     
     ;Get the CDF file ID
     fileID = self.parent -> GetFileID()
+
+    ;Quiet
+    thisQuiet = !quiet
+    !quiet = self.quiet
 
     ;Get the value -- STATUS will be 0 if SELF is a global attribute or if the
     ;                 variable does not contain the attribute.
     cdf_attget_entry, fileID, self.name, varName, attrEntryType, attrValue, status, $
                       CDF_TYPE=cdf_type, ZVARIABLE=zvariable
+    
+    ;Unquiet
+    !quiet = thisQuiet
 
     ;Message if the value could not be retrieved.
     if status eq 0 then $
@@ -489,6 +588,7 @@ pro MrCDF_Attribute::ParseVariableAttribute
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
+        if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
         void = cgErrorMsg()
         return
     endif
@@ -499,11 +599,18 @@ pro MrCDF_Attribute::ParseVariableAttribute
     cdf_attinq,  parentID, self.name, attname, scope, maxREntry, maxZEntry
     cdf_control, parentID, ATTRIBUTE=attnum, GET_ATTR_INFO=att_info
 
+    ;Quiet
+    thisQuiet = !quiet
+    !quiet = self.quiet
+
     ;Variable Attribute
     varinq = cdf_varinq(parentID, self.varname)
     cdf_attget_entry, parentID, attname, self.varname, attType, attValue, status, $
                       CDF_TYPE=cdf_type, ZVARIABLE=varInq.is_zvar
     if status eq 0 then message, 'Attribute "' + attname + '" does not exist for variable "' + self.varname + '".'
+
+    ;Unquiet
+    !quiet = thisQuiet
 
     ;Convert bytes back to strings.
     if n_elements(cdf_type) eq 0 then stop
@@ -512,6 +619,29 @@ pro MrCDF_Attribute::ParseVariableAttribute
     ;Make a data structure of the attribute information
     self.number   = attnum
     self.scope    = scope
+end
+
+
+;+
+;   Set properties of the object.
+;
+; :Keywords:
+;       QUIET:          in, optional, type=boolean
+;                       If set, warning messages from the CDF DLM will not be output.
+;-
+pro MrCDF_Attribute::SetProperty, $
+QUIET=quiet
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
 end
 
 
@@ -531,8 +661,14 @@ end
 ;                           CDF attribute name found in `PARENT`.
 ;       PARENT:             in, required, type=object
 ;                           CDF_File object
+;
+; :Keywords:
+;       QUIET:              in, optional, type=boolean, default=1
+;                           If set, warnings from the CDF DLM  will be suppressed.
+;                               This is the default.
 ;-
-function MrCDF_Attribute::init, attrName, parent
+function MrCDF_Attribute::init, attrName, parent, $
+QUIET=quiet
     compile_opt strictarr
     
     ;Error handling
@@ -554,10 +690,13 @@ function MrCDF_Attribute::init, attrName, parent
     parentID = parent -> GetFileID()
     cdf_attinq,  parentID, attrName, theName, attrScope, maxEntry, maxZEntry
     
+    
     ;Set properties
     self.name   = attrName
+    self.number = cdf_attnum(parentID, attrName)
     self.parent = parent
     self.scope  = attrScope
+    self.quiet  = n_elements(quiet) eq 0 ? 1 : keyword_set(quiet)
     if strpos(attrScope, 'GLOBAL') ne -1 $
         then self.global = 1B $
         else self.global = 0B
@@ -582,10 +721,12 @@ pro MrCDF_Attribute__define
     compile_opt strictarr
     
     define = { MrCDF_Attribute, $
+               inherits IDL_Object, $
                global:    0B, $
                name:      '', $
                number:    0L, $
                parent:    obj_new(), $
+               quiet:     0B, $
                scope:     '' $
              }
 end

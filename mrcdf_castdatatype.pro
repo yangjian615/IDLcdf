@@ -81,7 +81,7 @@
 ;   Modification History::
 ;       2014/03/07  -   Written by Matthew Argall
 ;-
-FUNCTION CDF_CastDataType, variable, $
+FUNCTION MrCDF_CastDataType, variable, $
 TNAME=tname, $
 TYPE=type
     On_Error, 2
@@ -100,16 +100,16 @@ TYPE=type
     ;Is the TYPE keyword set?
     IF Keyword_Set(type) THEN BEGIN
         CASE strupcase(variable) OF
-            0: idl_type = 'UNDEFINED'
-            1: idl_type = 'BYTE'
-            2: idl_type = 'INT'
-            3: idl_type = 'LONG'
-            4: idl_type = 'FLOAT'
-            5: idl_type = 'DOUBLE'
-            6: idl_type = 'COMPLEX'
-            7: idl_type = 'STRING'
-            8: idl_type = 'STRUCT'
-            9: idl_type = 'DCOMPLEX'
+             0: idl_type = 'UNDEFINED'
+             1: idl_type = 'BYTE'
+             2: idl_type = 'INT'
+             3: idl_type = 'LONG'
+             4: idl_type = 'FLOAT'
+             5: idl_type = 'DOUBLE'
+             6: idl_type = 'COMPLEX'
+             7: idl_type = 'STRING'
+             8: idl_type = 'STRUCT'
+             9: idl_type = 'DCOMPLEX'
             10: idl_type = 'POINTER'
             11: idl_type = 'OBJREF'
             12: idl_type = 'UINT'
