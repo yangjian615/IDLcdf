@@ -71,6 +71,8 @@
 ;       2014/05/08  -   Added the Quiet property to suppress warnings from the CDF DLM. - MRA
 ;       2014/05/09  -   Error in array creation when no GEntries exist. Fixed. Added the
 ;                           _OverloadHelp method. - MRA
+;       2014/05/17  -   Added the ToStruct method. Keyword to return the number of values
+;                           read. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -114,6 +116,7 @@ function MrCDF_Attribute::_OverloadPrint
     
     return, output
 end
+
 
 ;+
 ;   Provide information when the PRINT procedure is called.
@@ -319,6 +322,7 @@ ZVARIABLE=zvariable
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
+        if obj_valid(attrValueList) then obj_destroy, attrValueList
         if arg_present(the_error) eq 0 then void = cgErrorMsg()
         return, -1
     endif
@@ -363,7 +367,10 @@ ZVARIABLE=zvariable
         maxGEntry = attr_info.maxGEntry
         
         ;Return if there are no entries
-        if nEntries eq 0 then return, -1 
+        if nEntries eq 0 then begin
+            cdf_type = ''
+            return, -1
+        endif
         
         cdf_type   = strarr(maxGEntry+1)
         entryNum   = lindgen(maxGEntry+1)
@@ -444,7 +451,8 @@ end
 ;       ATTRVALUE:          Value(s) of the attribute.
 ;-
 function MrCDF_Attribute::GetVarAttrValue, varName, $
-CDF_TYPE=cdf_type
+CDF_TYPE=cdf_type, $
+COUNT=nElements
     compile_opt strictarr
 
     ;catch errors
@@ -475,6 +483,7 @@ CDF_TYPE=cdf_type
     if status eq 0 then $
         message, 'Variable ' + varName + ' does not have attribute "' + self.name + '".'
     
+    nElements = n_elements(attrValue)
     return, attrValue
 end
 
@@ -642,6 +651,55 @@ QUIET=quiet
     endif
     
     if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
+end
+
+
+;+
+;   Parse attribute information into a structure.
+;
+; :Params:
+;       VARNAME:        in, optional, type=string
+;                       If the attribute is variable in scope, then the associated
+;                           variable name must be provided.
+;-
+function MrCDF_Attribute::ToStruct, varName
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
+    
+    ;Make sure a variable name was given for variable attributes.
+    if self.global eq 0 then begin
+        if MrIsA(varName, /SCALAR, 'STRING') eq 0 then $
+            message, 'To create a structure from a variable attribute, VARNAME must be provided.'
+    endif
+    
+    ;Get the parent's ID
+    parentID = self.parent -> GetFileID()
+    cdf_control, parentID, ATTRIBUTE=self.name, GET_ATTR_INFO=attr_info
+    
+    ;Read the attribute data
+    if self.global $
+        then data = self -> GetGlobalAttrValue(CDF_TYPE=cdf_type, COUNT=nElements) $
+        else data = self -> GetVarAttrValue(varName, CDF_TYPE=cdf_type, COUNT=nElements)
+    
+    ;Was there any data?
+    if nElements eq 0 then data = '<NoData>'
+    
+    ;Create the structure
+    attr_struct = {_NAME:     self.name, $
+                   _TYPE:          'ATTRIBUTE', $
+                   _SCOPE:    self.scope, $
+                   _DATA:          data, $
+                   _DATATYPE:      cdf_type, $
+                   _NELEMENTS:     nElements}
+    
+    return, attr_struct
 end
 
 

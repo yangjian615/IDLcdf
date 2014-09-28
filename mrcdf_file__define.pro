@@ -121,8 +121,72 @@
 ;                           property to suppress warnings from the CDF DLM. - MRA
 ;       2014/05/09  -   Added DECODING, ENCODING, and MAJORITY properties. Added the
 ;                           _OverloadHelp method. - MRA
+;       2014/05/17  -   Added the ToStruct method. - MRA
+;       2014/06/05  -   CDF files are no longer validated by default when opened. - MRA
 ;-
 ;*****************************************************************************************
+;+
+;   Obtain a variable's object reference
+;
+; :Params:
+;       ISRANGE:            in, required, type=intarr
+;                           A vector that has one element for each Subscript argument
+;                               supplied by the user; each element contains a zero if the
+;                               corresponding input argument was a scalar index value or
+;                               array of indices, or a one if the corresponding input
+;                               argument was a subscript range.
+;       SUBSCRIPT1:         in, required, type=string/integer
+;                           If a string is given, it is the name of the variable object whose
+;                               for which the object reference is to be retrieved. An
+;                               integer value of 0 will return the file's object reference.
+;
+; :Keywords:
+;       DATASET:            in, optional, private, type=MrArray object
+;                           Used internally on a recursive call if `SUBSCRIPT1` is a string.
+;
+; :Returns:
+;       RESULT:             in, required, type=numeric array
+;                           The subarray accessed by the input parameters.
+;-
+function MrCDF_File::_OverloadBracketsRightSide, isRange, subscript1
+    compile_opt strictarr
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
+    
+    ;Pick the proper data set to alter
+    if n_elements(subscript1) ne 1 then $
+        message, 'The first subscript must be a scalar.'
+    
+    ;Only one subscript can be given    
+    nSubs = n_elements(isRange)
+    if nSubs ne 1 then message, 'Only one subscript is accepted.'
+
+    ;Variable name.    
+    if MrIsA(subscript1, 'STRING') then begin
+        tf_has = self -> HasVar(subscript1, OBJECT=theObj)
+        if tf_has eq 0 then message, 'Variable "' + subscript1 + '" not found.'
+    
+    ;Variable index
+    endif else if MrIsA(subscript1, /INTEGER) then begin
+        ;If the scalar index 0 was given, return the SELF reference
+        if subscript1 ne 0 then message, '0 is the only integer 0 is accepted as a subscript.'
+        theObj = self
+        
+    endif else begin
+        message, 'First subscript must be a string or 0.'
+    endelse
+    
+    ;Return the variable object?
+    return, theObj
+end
+
+
 ;+
 ;   Provide information when the PRINT procedure is called.
 ;-
@@ -295,69 +359,6 @@ end
 
 
 ;+
-;   The purpose of this method is to print CDF global attribute conventions
-;-
-pro MrCDF_File::ConventionsGlobalAttr
-    compile_opt strictarr
-    on_error, 2
-    
-    ;Print the global attribute conventsions.
-    print, ''
-    
-    ;Print the URL
-    print, 'http://spdf.gsfc.nasa.gov/istp_guide/gattributes.html'
-end
-
-
-;+
-;   The purpose of this method is to print CDF variable attribute conventions
-;-
-pro MrCDF_File::ConventionsVarAttr
-    compile_opt strictarr
-    on_error, 2
-    
-    ;Print the variable attribute conventsions.
-    print, [['CATDESC',          'Required'], $
-            ['DEPEND_0',         'Required'], $
-            ['DEPEND_1',         'Required'], $
-            ['DEPEND_2',         'Required'], $
-            ['DEPEND_3',         'Required'], $
-            ['DISPLAY_TYPE',     'Required'], $
-            ['FIELDNAM',         'Required'], $
-            ['FILLVAL',          'Required'], $
-            ['FORMAT',           'Required'], $
-            ['FORM_PTR',         'Required'], $
-            ['LABLAXIS',         'Required'], $
-            ['LABL_PTR_1',       'Required'], $
-            ['LABL_PTR_2',       'Required'], $
-            ['LABL_PTR_3',       'Required'], $
-            ['UNITS',            'Required'], $
-            ['UNIT_PTR',         'Required'], $
-            ['VALIDMIN',         'Required'], $
-            ['VALIDMAX',         'Required'], $
-            ['VAR_TYPE',         'Recommended'], $
-            ['SCALETYP',         'Recommended'], $
-            ['VAR_NOTES',        'Recommended'], $
-            ['AVG_TYPE',         'Optional'], $
-            ['DELTA_PLUS_TYPE',  'Optional'], $
-            ['DELTA_MINUS_TYPE', 'Optional'], $
-            ['DICT_KEY',         'Optional'], $
-            ['MONOTON',          'Optional'], $
-            ['SCALEMIN',         'Optional'], $
-            ['SCALEMAX',         'Optional'], $
-            ['V_PARENT',         'Optional'], $
-            ['DERIVN',           'cluster required'], $
-            ['sig_digits',       'cluster recommended'], $
-            ['SI_conv',          'cluster recommended']]
-    
-    ;Print the URL
-    print, 'See also: http://spdf.gsfc.nasa.gov/istp_guide/vattributes.html'
-            
-            
-end
-
-
-;+
 ;   Create a global or variable attribute.
 ;
 ; :Params:
@@ -418,6 +419,8 @@ end
 ;                           A vector with one element per CDF dimension. Elements are
 ;                               either 'VARY' (or 1) or 'NOVARY' (or 0) to indicate
 ;                               variance in that dimension.
+;
+; :Keywords:
 ;       ALLOCATERECS:       in, optional, type=long
 ;                           Number of pre-allocated records in a single-file CDF file.
 ;                               Ensures that all data records are stored contiguously.
@@ -492,15 +495,27 @@ ZVARIABLE=zvariable
     endcase
 
     ;Write the data
-    varID = cdf_varcreate(self.fileID, varName, dimVary, ALLOCATERECS=allocaterecs, $
-                          DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
-                          ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
-                          CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
-                          CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
-                          CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
-                          CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
-                          CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
-                          CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+    if n_elements(dimVary) eq 0 then begin
+        varID = cdf_varcreate(self.fileID, varName, ALLOCATERECS=allocaterecs, $
+                              DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
+                              ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
+                              CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
+                              CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
+                              CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
+                              CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
+                              CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
+                              CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+    endif else begin
+        varID = cdf_varcreate(self.fileID, varName, dimVary, ALLOCATERECS=allocaterecs, $
+                              DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
+                              ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
+                              CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
+                              CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
+                              CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
+                              CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
+                              CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
+                              CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+    endelse
     
     ;Add the variable object
     self -> CreateVarObj, varName
@@ -778,9 +793,8 @@ end
 ;                           Name of the variable whose compression settings are to
 ;                               be retrieved. The default is to retrieve the compression
 ;                               settings of the file.
-;       GZIP_LEVEL:         out, optional, type=byte, default=5
-;                           Desired effort of GZip compression, from 1-9. Automatically
-;                               sets `COMPRESSION`=5.
+;       GZIP_LEVEL:         out, optional, type=byte
+;                           Desired effort of GZip compression, from 1-9.
 ;
 ; :Returns:
 ;       COMPRESSION:        Type of compression set for the file or `VARIABLE`::
@@ -1112,11 +1126,12 @@ CDF_TYPE=cdf_type
     ;File must be parsed first
     if self.isParsed eq 0 then ParseFile
 
-    case size(varName, /TNAME) of
+    case size(variable, /TNAME) of
         'OBJREF': varObj = variable
         
         'STRING': begin
-            varObj = self.variables -> FindByName(variable, COUNT=varCount)
+            varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+            if varCount eq 0 then varObj = self.rVars -> FindByName(variable, COUNT=varCount)
             if varCount eq 0 then $
                 message, 'Cannot find variable with name "' + variable + '".'
             if obj_valid(varObj) eq 0 then $
@@ -1158,6 +1173,9 @@ end
 ;                           Interval between records when reading multiple records.
 ;       REC_START:          in, optional, type=integer, defualt=0
 ;                           Record at which to begin reading data.
+;       SINGLE_VALUE:       in, optional, type=boolean, default=0
+;                           Read a single value via the CDF_VarGet1 procedure. The
+;                               default is to read a full record via CDF_VarGet.
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
@@ -1181,6 +1199,7 @@ OFFSET=offset, $
 REC_COUNT=rec_count, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
+SINGLE_VALUE=single_value, $
 STRING=string, $
 ;OUTPUT
 CDF_TYPE=cdf_type, $
@@ -1190,7 +1209,7 @@ PADVALUE=padvalue
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     ;Get the variable object
     case size(variable, /TNAME) of
@@ -1212,6 +1231,7 @@ PADVALUE=padvalue
                               REC_COUNT=rec_count, $
                               REC_INTERVAL=rec_interval, $
                               REC_START=rec_start, $
+                              SINGLE_VALUE=single_value, $
                               STRING=string, $
                               CDF_TYPE=cdf_type, $
                               FILLVALUE=fillvalue, $
@@ -1254,7 +1274,7 @@ pro MrCDF_File::GetProperty, $
 DECODING=decoding, $
 ENCODING=encoding, $
 FILENAME=filename, $
-fileID=fileID, $
+FILEID=fileID, $
 MAJORITY=majority, $
 NATTRS=nAttrs, $
 NGATTRS=nGAttrs, $
@@ -1435,6 +1455,10 @@ end
 ;                               "NEXT"
 ;                               "SGI"
 ;                               "SUN"
+;       ERROR:              out, optional, type=integer
+;                           Named variable into which the error code will be returned.
+;                               0 indicates no error. If present, the dialog error message
+;                               will be suppressed.
 ;       GZIP_LEVEL:         in, optional, type=byte, default=5
 ;                           Desired effort of GZip compression, from 1-9. Automatically
 ;                               sets `COMPRESSION`=5.
@@ -1445,25 +1469,26 @@ end
 ;       MODIFY:             in, optional, type=boolean, default=1
 ;                           If set, the file will be opened for writing. The default is
 ;                               to open in a read-only mode.
-;       VALIDATE:           in, optional, type=boolean, default=1
-;                           Set equal to 0 to turn file validation off when opening a
+;       VALIDATE:           in, optional, type=boolean, default=0
+;                           Set equal to 1 to turn file validation on when opening a
 ;                               file. File validation only occurs in IDL 8.0+.
 ;       _REF_EXTRA:         in, optinal, type=any
 ;-
 pro MrCDF_File::Open, filename, $
 BACKWARD_COMPATIBLE = backward_compatible, $
 CANCEL = cancel, $
-ROW_MAJOR = row_major, $
 COMPRESSION = compression, $
 CLOBBER = clobber, $
 CREATE = create, $
 DECODING = decoding, $
 DIALOG_PARENT = dialog_parent, $
 DIRECTORY = directory, $
+ERROR = the_error, $
 ENCODING = encoding, $
 GZIP_LEVEL = gzip_level, $
 MULTI_FILE = multi_file, $
 MODIFY = modify, $
+ROW_MAJOR = row_major, $
 VALIDATE = validate
     compile_opt strictarr
     
@@ -1473,19 +1498,20 @@ VALIDATE = validate
         catch, /cancel
         ;close the CDF file if it was opened.
         if n_elements(fileID) ne 0 then cdf_close, self.fileID
-        void = cgErrorMsg()
+        cdf_set_validate, /YES
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
         return
     endif
     
     ;Defaults
-    cancel    = 0B
-    modify    = keyword_set(modify)
-    create    = keyword_set(create)
-    clobber   = keyword_Set(clobber)
-    row_major = n_elements(row_major) eq 0 ? 0 : keyword_set(row_major)
-    validate  = n_elements(validate)  eq 0 ? 1 : keyword_set(validate)
+    cancel              = 0B
     backward_compatible = keyword_set(backward_compatible)
-    col_major = ~row_major
+    clobber             = keyword_Set(clobber)
+    create              = keyword_set(create)
+    modify              = keyword_set(modify)
+    row_major           = n_elements(row_major) eq 0 ? 0 : keyword_set(row_major)
+    no_validate         = ~n_elements(validate)
+    col_major           = ~row_major
     if n_elements(encoding) eq 0 then encoding = 'HOST'
     if n_elements(decoding) eq 0 then decoding = encoding
     
@@ -1501,7 +1527,7 @@ VALIDATE = validate
         endif
     endif
     
-    ;Are we creating a new file or opening an existing file. The file is writeable
+    ;Are we creating a new file or opening an existing file? The file is writeable
     ;if we are opening and modifying, or if we are creating a new one.
     mode = (create eq 1) ? 'CREATE' : 'OPEN'
     self.writeable = (mode eq 'OPEN' && modify eq 1) or (mode eq 'CREATE')
@@ -1529,7 +1555,7 @@ VALIDATE = validate
     self.filename = filename
     
     ;Validate the file (IDL v8.0+)
-    if validate eq 0 && MrCmpVersion('8.0') le 0 then cdf_set_validate, /NO
+    if no_validate && MrCmpVersion('8.0') le 0 then cdf_set_validate, /NO
     
     ;Make backward compatible?
     if backward_compatible then cdf_set_cdf27_backward_compatible, /ON
@@ -1606,7 +1632,7 @@ VALIDATE = validate
     endcase
     
     ;Turn file validation back on (IDL v8.0+)
-    if validate eq 0 && MrCmpVersion('8.0' le 0) then cdf_set_validate, /ON
+    if no_validate && MrCmpVersion('8.0' le 0) then cdf_set_validate, /YES
     
     ;Set the compression?
     if n_elements(compression) gt 0 || n_elements(gzip_level) gt 0 then begin
@@ -1749,7 +1775,7 @@ end
 ;                               into account `INTERVAL` and `OFFSET`.
 ;       INTERVAL:           in, optional, type=intarr, default=1 for each dimension
 ;                           Interval between values in each dimension.
-;       PATTERN:            in, optional, type=boolean, default="%Y-%M-%dT%H:%m:%S%f"
+;       PATTERN:            in, optional, type=boolean, default="%Y-%M-%dT%H:%m:%S%z"
 ;                           If set, then `REC_START` and `REC_END` are that will be parsed
 ;                               into CDF epoch values. PATTERN describes how the times
 ;                               should be parsed and accepts any pattern recognized by
@@ -1778,11 +1804,7 @@ end
 ;                               that its values are epoch times. The epoch type of TIME
 ;                               must match that of DEPEND_0.
 ;       DATATYPE:           out, optional, type=string
-;                           CDF datatype of the variable being read. Possibilities are:
-;                               'CDF_EPOCH', 'CDF_BYTE', 'CDF_CHAR', 'CDF_DOUBLE', 
-;                               'CDF_REAL8', 'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4',
-;                               'CDF_INT1', 'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR',
-;                               'CDF_UINT1', 'CDF_UINT2', 'CDF_UINT4'.
+;                           CDF datatype of the variable being read.
 ;       FILLVALUE:          out, optional, type=any
 ;                           Value used as a filler for missing data.
 ;       PADVALUE:           out, optional, type=any
@@ -1819,7 +1841,8 @@ PADVALUE=padvalue
     ;Was a time range given?
     time = keyword_set(time)
     if n_elements(pattern) gt 0 then time = 1
-    if MrIsA(rec_start, 'STRING') && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%f"
+    if MrIsA(rec_start, 'STRING') || MrIsA(rec_end, 'STRING') then time = 1
+    if time && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%z"
     
     ;Get the variable object
     tf_has = self -> HasVar(varName, OBJECT=varObj)
@@ -1840,65 +1863,45 @@ PADVALUE=padvalue
         ;Time variable
         if max(cdf_type eq ['CDF_EPOCH', 'CDF_EPOCH16', 'CDF_TIME_TT2000']) eq 1 then begin
             isTime   = 1B
-            depend_0 = self -> GetVarData(varName)
+            depend_0 = self -> GetVarData(varName, CDF_TYPE=epoch_type)
             
         endif else begin
             ;Search for DEPEND_0
             tf_has = varObj -> HasAttr('DEPEND_0')
-            if tf_has eq 0 then message, 'No DEPEND_0 attribute exists. Cannot select time range.'
-    
-            ;Get the name of the epoch variable
-            tVarName = varObj -> GetAttrValue('DEPEND_0')
+            if tf_has then begin
+                ;Get the name of the epoch variable
+                tVarName = varObj -> GetAttrValue('DEPEND_0')
         
-            ;Read the time and figure out its epoch type.
-            depend_0 = self -> GetVarData(tVarName, CDF_TYPE=epoch_type)
+                ;Read the time and figure out its epoch type.
+                depend_0 = self -> GetVarData(tVarName, CDF_TYPE=epoch_type)
+            endif else begin
+                message, 'No DEPEND_0 attribute exists for variable "' + varName + '". Reading all records.', /INFORMATIONAL
+            endelse
         endelse
 
-    ;-----------------------------------------------------
-    ; Convert Interval to Epoch Values \\\\\\\\\\\\\\\\\\\
-    ;-----------------------------------------------------
-        if MrIsA(rec_start, 'STRING') $
-            then epoch_start = MrCDF_Epoch_Parse(rec_start, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
-            else epoch_start = n_elements(rec_start) gt 0 ? rec_start : depend_0[0]
+        ;Is there a DEPEND_0 variable?
+        if tf_has then begin
+        ;-----------------------------------------------------
+        ; Convert Interval to Epoch Values \\\\\\\\\\\\\\\\\\\
+        ;-----------------------------------------------------
+            if MrIsA(rec_start, 'STRING') $
+                then epoch_start = MrCDF_Epoch_Parse(rec_start, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
+                else epoch_start = n_elements(rec_start) gt 0 ? rec_start : depend_0[0]
                 
-        if MrIsA(rec_end, 'STRING') $
-            then epoch_end = MrCDF_Epoch_Parse(rec_end, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
-            else epoch_end = n_elements(rec_end) gt 0 ? rec_end : depend_0[n_elements(depend_0)-1]
+            if MrIsA(rec_end, 'STRING') $
+                then epoch_end = MrCDF_Epoch_Parse(rec_end, PATTERN=pattern, EPOCH_TYPE=epoch_type) $
+                else epoch_end = n_elements(rec_end) gt 0 ? rec_end : depend_0[n_elements(depend_0)-1]
 
-    ;-----------------------------------------------------
-    ; Find Record Range \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-    ;-----------------------------------------------------
-        if n_elements(epoch_start) gt 0 && n_elements(epoch_end) gt 0 then begin
+        ;-----------------------------------------------------
+        ; Find Record Range \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+        ;-----------------------------------------------------
+            ;REC_START and REC_COUNT are needed
             comp = MrCDF_Epoch_Compare(depend_0, epoch_start, epoch_end)
             iMatch = where(comp eq 1, rec_count)
             if rec_count eq 0 $
                 then message, 'No records found between REC_START and REC_END.' $
                 else rec_start_out = min(iMatch)
-        
-        ;Only one endpoint given.
-        endif else begin
-            if n_elements(epoch_start) gt 0 then begin
-                comp = MrCDF_Epoch_Compare(depend_0, epoch_start)
-                iMatch = where(comp ge 0, rec_count)
-                if rec_count eq 0 $
-                    then message, 'No records found between REC_START and REC_END.' $
-                    else rec_start_out = min(iMatch)
-            endif else begin
-                rec_start_out = 0
-            endelse
-
-            if n_elements(epoch_end) gt 0 then begin
-                comp = MrCDF_Epoch_Compare(depend_0, epoch_end)
-                iMatch = where(comp le 0, rec_count)
-                if rec_count eq 0 $
-                    then message, 'No records found between REC_START and REC_END.' $
-                    else rec_end_out = max(iMatch)
-            endif else begin
-                rec_end_out = n_elements(depend_0) - 1
-            endelse
-            
-            rec_count = rec_end_out - rec_start_out + 1
-        endelse
+        endif
 
 ;-----------------------------------------------------
 ; Record Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -1925,7 +1928,7 @@ PADVALUE=padvalue
                                   REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
                                   FILLVALUE=fillvalue, PADVALUE=padvalue)
     endif else begin
-        data = depend_0[rec_start_out:rec_start_out+rec_count-1]
+        data = depend_0[*,rec_start_out:rec_start_out+rec_count-1]
     endelse
     
     ;DEPEND_0
@@ -2071,6 +2074,94 @@ QUIET=quiet
     if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
 end
 
+
+;+
+;   Parse file information into a structure.
+;-
+function MrCDF_File::ToStruct, $
+READ_DATA=read_data
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
+    
+    ;Defaults
+    read_data = keyword_set(read_data)
+    
+    self -> GetProperty, NGATTRS=nGAttrs, NVATTRS=nVAttrs, NRVARS=nRVars, NZVARS=nZVars
+    
+    ;Information about variable.
+    file_struct = {_NAME:         self.filename, $
+                   _ENCODING:     self.encoding, $
+                   _DECODING:     self.decoding, $
+                   _MAJORITY:     self.majority, $
+                   _NGLOBALATTRS:      nGAttrs, $
+                   _NVARATTRS:         nVAttrs, $
+                   _NRVARS:            nRVars, $
+                   _NZVARS:            nZVars}
+    
+;---------------------------------------------------------------------
+; Global Attributes //////////////////////////////////////////////////
+;---------------------------------------------------------------------
+    allAttrs = self.attrs -> Get(/ALL, COUNT=nAttrs)
+    for i = 0, nAttrs - 1 do begin
+        thisAttr = allAttrs[i]
+        thisAttr -> GetProperty, SCOPE=scope
+        if strpos(scope, 'GLOBAL') eq -1 then continue
+    
+        gAttr_struct = thisAttr -> ToStruct()
+    
+        ;Create a structure tag out of the name.
+        ;   Convert to uppercase.
+        ;   Convert all non-alphanumeric characters to underscores.
+        tag = gAttr_struct._NAME
+        tag = strjoin(strsplit(strupcase(tag), '[^A-Z0-9]', /EXTRACT, /REGEX), '_')
+        
+        ;Add the attribute to the variable structure
+        file_struct = create_struct(file_struct, tag, gAttr_struct)
+    endfor
+    
+;---------------------------------------------------------------------
+; rVariables /////////////////////////////////////////////////////////
+;---------------------------------------------------------------------
+    allRVars = self.rVars -> Get(/ALL, COUNT=nRVars)
+    for i = 0, nRVars - 1 do begin
+        rVar_struct = allRVars[i] -> ToStruct(READ_DATA=read_data)
+    
+        ;Create a structure tag out of the name.
+        ;   Convert to uppercase.
+        ;   Convert all non-alphanumeric characters to underscores.
+        tag = rVar_struct._NAME
+        tag = strjoin(strsplit(strupcase(tag), '[^A-Z0-9]', /EXTRACT, /REGEX), '_')
+        
+        ;Add the attribute to the variable structure
+        file_struct = create_struct(file_struct, tag, rVar_struct)
+    endfor
+    
+;---------------------------------------------------------------------
+; zVariables /////////////////////////////////////////////////////////
+;---------------------------------------------------------------------
+    allZVars = self.zVars -> Get(/ALL, COUNT=nZVars)
+    for i = 0, nZVars - 1 do begin
+        zVar_struct = allZVars[i] -> ToStruct(READ_DATA=read_data)
+    
+        ;Create a structure tag out of the name.
+        ;   Convert to uppercase.
+        ;   Convert all non-alphanumeric characters to underscores.
+        tag = zVar_struct._NAME
+        tag = strjoin(strsplit(strupcase(tag), '[^A-Z0-9]', /EXTRACT, /REGEX), '_')
+        
+        ;Add the attribute to the variable structure
+        file_struct = create_struct(file_struct, tag, zVar_struct)
+    endfor
+    
+    return, file_struct
+end
 
 ;+
 ;   Determines if a variable has a particular attribute.
@@ -2255,11 +2346,10 @@ end
 ;   Write variable data to the CDF file.
 ;
 ; NOTES:
-;   Records come after dimensions, so the array::
+;   Records and dimensions should be ordered in the following manner::
+;       [DEPEND_3, DEPEND_2, DEPEND_1, DEPEND_0, RECORDS]
 ;
-;       data = bytarr(340, 440, 24)
-;
-;   has DIMENSIONS=[340,440] with 24 records.
+;   with higher dependencies being optional.
 ;
 ; :Params:
 ;       VARIABLE:           in, required, type=string/object
@@ -2394,14 +2484,25 @@ end
 ;-
 pro MrCDF_File::cleanup
     compile_opt idl2
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMSG()
+        return
+    endif
 
-    ;close the CDF file
+    ;Close the CDF file
     self -> Close
     
     ;Destoy objects
     obj_destroy, self.attrs
     obj_destroy, self.rVars
     obj_destroy, self.zVars
+    
+    ;Superclasses
+    self -> IDL_Object::Cleanup
 end
 
 
@@ -2422,12 +2523,10 @@ end
 ;       DIRECTORY:          in, optional, type=string
 ;                           If FILENAME is not provided, then open the file-choosing
 ;                               dialog box in this directory.
-;       FILE_STATUS:        out, optional, type=int
-;                           Sucess status of the file being opened::
-;                               0 - No file chosen (i.e. the cancel button on the dialog
-;                                      box was pushed).
-;                               1 - A file was chosen
-;                               # - The index of the error returned by Catch
+;       ERROR:              out, optional, type=integer
+;                           Named variable into which the error code will be returned.
+;                               0 indicates no error. If present, the dialog error message
+;                               will be suppressed.
 ;       QUIET:              in, optional, type=boolean, default=1
 ;                           If set, annoying warnings from the CDF DLM  will be suppressed.
 ;                               This is the default.
@@ -2444,7 +2543,7 @@ function MrCDF_File::init, filename, $
 CREATE=create, $
 DIALOG_PARENT=dialog_parent, $
 DIRECTORY=directory, $
-FILE_STATUS=file_status, $
+ERROR=the_error, $
 QUIET=quiet, $
 _REF_EXTRA=extra
     compile_opt strictarr
@@ -2453,7 +2552,7 @@ _REF_EXTRA=extra
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then void = cgErrorMsg()
         return, 0
     endif
 
@@ -2472,8 +2571,10 @@ _REF_EXTRA=extra
                   CANCEL=cancel, $
                   DIALOG_PARENT=dialog_parent, $
                   DIRECTORY=directory, $
+                  ERROR=the_error, $
                   _STRICT_EXTRA=extra
     if cancel eq 1 then return, 0
+    if the_error ne 0 then message, /REISSUE_LAST
     
     ;Parse the file if it existed previously
     if create eq 0 then self -> ParseFile

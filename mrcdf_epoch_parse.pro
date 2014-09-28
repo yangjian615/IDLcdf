@@ -1,7 +1,7 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       DATATIME_TO_EPOCH
+;       MrCDF_Epoch_Parse
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2013, Matthew Argall                                                   ;

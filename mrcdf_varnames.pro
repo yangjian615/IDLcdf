@@ -1,10 +1,10 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       DATATIME_TO_EPOCH
+;       MrCDF_VarNames
 ;
 ;*****************************************************************************************
-;   Copyright (c) 2013, Matthew Argall                                                   ;
+;   Copyright (c) 2014, Matthew Argall                                                   ;
 ;   All rights reserved.                                                                 ;
 ;                                                                                        ;
 ;   Redistribution and use in source and binary forms, with or without modification,     ;
@@ -33,31 +33,25 @@
 ;
 ; PURPOSE:
 ;+
-;   Compare CDF epoch times.
+;   Return the names of all variables within the given CDF file.
+;
+; :Categories:
+;       CDF Utilities
 ;
 ; :Params:
-;       EPOCH:          in, required, type="CDF_EPOCH"\, "CDF_EPOCH16"\, "CDF_TIME_TT2000"
-;                       Epoch time to be compared against `BASE_EPOCH`.
-;       BASE_EPOCH:     in, required, type="CDF_EPOCH"\, "CDF_EPOCH16"\, "CDF_TIME_TT2000"
-;                       Check to see if `EPOCH` is less than, equal to, or greater than
-;                           this value.
-;       END_EPOCH:      in, optional, type=same as `BASE_EPOCH`
-;                       If given, comparison is `BASE_EPOCH` <= `EPOCH` <= `END_EPOCH`.
-;                           END_EPOCH must be same type and dimensionality as `EPOCH`.
+;       FILENAME:       in, required, type=string
+;                       Name of the CDF file for which variable names are to be returned.
+;
+; :Keywords:
+;       ISZVAR:         out, optional, type=bytarr
+;                       Returns 1 if the corresponding variable name is associated with
+;                           a z-variable and 0 for r-variables.
+;       VALIDATE:       in, optional, type=boolean, default=0
+;                       If set, the CDF file will be validated (takes time).
 ;
 ; :Returns:
-;       RESULT:         If `END_EPOCH` was given::
-;                            1 - base_epoch <= epoch <= end_epoch
-;                            0 - otherwise
-;                       If `END_EPOCH` is /not/ given::
-;                            1 - epoch > base_epoch
-;                            0 - epoch = base_epoch
-;                           -1 - epoch < base_epoch
-;
-; :Uses:
-;   Uses the following external programs::
-;       MrCDFCmpVersion.pro
-;
+;       VARNAMES:       Array of variable names contained within the CDF file.
+;       
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
@@ -65,25 +59,71 @@
 ;       8 College Rd.
 ;       Durham, NH, 03824
 ;       matthew.argall@wildcats.unh.edu
-;       
+;
 ; :History:
 ;   Modification History::
-;       2014/03/08  -   Written by Matthew Argall
+;       2014/08/22  -   Written by Matthew Argall
 ;-
-function MrCDF_Epoch_Compare, epoch, base_epoch, end_epoch
+function MrCDF_VarNames, filename, $
+ISZVAR=isZVar, $
+VALIDATE=validate
     compile_opt strictarr
-    on_error, 2
 
-    if MrCDFCmpVersion('3.4') le 0 then begin
-        if n_elements(end_epoch) eq 0 $
-            then result = cdf_epoch_compare(epoch, base_epoch) $
-            else result = cdf_epoch_compare(epoch, base_epoch, end_epoch)
-    endif else begin
-        ;TO DO: add functionality for versions < 3.4
-        message, "For better performance, install the NASA's official CDF path for IDL.", /INFORMATIONAL
-        message, 'http://cdf.gsfc.nasa.gov/html/cdf_patch_for_idl.html', /INFORMATIONAL
-    endelse
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /CANCEL
+        
+        ;Close the file
+        if n_elements(cdfID) gt 0 then cdf_close, cdfID
     
-    ;Return the epoch time
-    return, result
+        ;Turn file validation back on
+        if MrCmpVersion('8.0') le 0 then $
+            if validate eq 0 then cdf_set_validate, /YES
+            
+        void = cgErrorMsg()
+        return, -1
+    endif
+    
+    ;Defaults
+    validate = keyword_set(validate)
+    if file_test(filename) eq 0 then message, 'File not found: ' + filename
+
+;-----------------------------------------------------
+; Open File & Get Variable Names \\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    ;Validate the file?
+    if validate then if MrCmpVersion('8.0') le 0 $
+        then cdf_set_validate, /YES $
+        else cdf_set_validate, /NO
+
+    ;Open the file and get info
+    cdfID    = cdf_open(filename)
+    cdf_info = cdf_inquire(cdfID)
+    
+    ;Allocate memory
+    varnames = strarr(cdf_info.nvars + cdf_info.nzvars)
+    isZVar   = bytarr(cdf_info.nvars + cdf_info.nzvars)
+    
+    ;R-Variables
+    for i = 0, cdf_info.nvars - 1 do begin
+        var_inq = cdf_varinq(cdfID, i)
+        varnames[i] = var_inq.name
+    endfor
+    
+    ;Z-Variables
+    for i = 0, cdf_info.nzvars - 1 do begin
+        var_inq                    = cdf_varinq(cdfID, i, /ZVARIABLE)
+        varnames[cdf_info.nvars+i] = var_inq.name
+        isZvar[cdf_info.nvars+i]   = 1B
+    endfor
+    
+    ;Close the file
+    cdf_close, cdfID
+    
+    ;Turn file validation back on
+    if MrCmpVersion('8.0') le 0 then $
+        if validate eq 0 then cdf_set_validate, /YES
+    
+    return, varnames
 end

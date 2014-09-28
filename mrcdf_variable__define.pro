@@ -67,6 +67,7 @@
 ;                           It then checks if one is to be created. - MRA
 ;       2014/05/08  -   Added the Quiet property to suppress warnings from the CDF DLM. - MRA
 ;       2014/05/09  -   Added the _OverloadHelp method. - MRA
+;       2014/05/17  -   Added the ToStruct method. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -160,9 +161,9 @@ function MrCDF_Variable::_OverloadHelp, varname
     endif
     
     ;Dimensions
-    if n_elements(self.dim) eq 1 $
-        then dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec, 2) + ']' $
-        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec, 2) + ']'
+    if n_elements(*self.dim) eq 1 $
+        then dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']' $
+        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']'
     
     ;Variable type
     var_type = self.zvariable ? 'zVar' : 'rVar'
@@ -323,6 +324,9 @@ end
 ;                           Interval between records when reading multiple records.
 ;       REC_START:          in, optional, type=integer, defualt=0
 ;                           Record at which to begin reading data.
+;       SINGLE_VALUE:       in, optional, type=boolean, default=0
+;                           Read a single value via the CDF_VarGet1 procedure. The
+;                               default is to read a full record via CDF_VarGet.
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
@@ -350,6 +354,7 @@ OFFSET=offset, $
 REC_COUNT=rec_count, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
+SINGLE_VALUE=single_value, $
 STRING=string, $
 ;OUTPUT
 CDF_TYPE=cdf_type, $
@@ -368,14 +373,14 @@ PADVALUE=padvalue
     parentID = self.parent -> GetFileID()
     
     ;Get the value(s)
-    if rec_count eq 1 then begin
+    if single_value then begin
         cdf_varget1, parentID, self.name, value, OFFSET=offset, REC_START=rec_start, STRING=string
     endif else begin
         cdf_varget, parentID, self.name, value, COUNT=count, INTERVAL=interval, $
                     OFFSET=offset, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                     REC_START=rec_start, STRING=string
     endelse
-    
+
     ;Output Keywords
     cdf_type  = self.cdf_type
     if ptr_valid(self.padvalue)      then padvalue  = *self.padvalue
@@ -444,20 +449,20 @@ CDF_TYPE=cdf_type, $
 NELEMENTS=nElements, $
 RECVAR=recvar, $
 DIMVAR=dimvar, $
-DIM=dim, $
+DIMENSIONS=dimensions, $
 MAXREC=maxrec
     compile_opt strictarr
     on_error, 2
     
     ;Get Properties
-    if arg_present(cdf_type)  then cdf_type  =  self.cdf_type
-    if arg_present(dim)       then dim       = *self.dim
-    if arg_present(dimvar)    then dimvar    = *self.dimvar
-    if arg_present(maxrec)    then maxrec    =  self.maxrec
-    if arg_present(name)      then name      =  self.name
-    if arg_present(nelements) then nelements =  self.nelements
-    if arg_present(number)    then number    =  self.number
-    if arg_present(recvar)    then recvar    =  self.recvar
+    if arg_present(cdf_type)   then cdf_type   =  self.cdf_type
+    if arg_present(dimensions) then dimensions = *self.dim
+    if arg_present(dimvar)     then dimvar     = *self.dimvar
+    if arg_present(maxrec)     then maxrec     =  self.maxrec
+    if arg_present(name)       then name       =  self.name
+    if arg_present(nelements)  then nelements  =  self.nelements
+    if arg_present(number)     then number     =  self.number
+    if arg_present(recvar)     then recvar     =  self.recvar
 end
 
 
@@ -553,6 +558,64 @@ QUIET=quiet
     endif
     
     if n_elements(quiet) gt 0 then self.quiet = keyword_set(quiet)
+end
+
+
+;+
+;   Parse variable information into a structure.
+;-
+function MrCDF_Variable::ToStruct, $
+READ_DATA=read_data
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, -1
+    endif
+    
+    ;Defaults
+    read_data = keyword_set(read_data)
+    
+    ;Number of dimensions
+    nDimensions = n_elements(self.dim)
+    if nDimensions eq 1 && *self.dim eq 0 then nDimensions = 0
+    
+    ;Get the data?
+    if read_data $
+        then data = self -> GetValue() $
+        else data = '<NotRead>'
+    
+    ;Information about variable.
+    var_struct = {_NAME:         self.name, $
+                  _DATA:              data, $
+                  _TYPE:              'VARIABLE', $
+                  _DATATYPE:     self.cdf_type, $
+                  _NELEMENTS:    self.maxrec + 1, $
+                  _NDIMENSIONS:       nDimensions, $
+                  _DIMENSIONS:  *self.dim, $
+                  _ISZVAR:       self.zvariable, $
+                  _RECVAR:       self.recvar, $
+                  _DIMVAR:      *self.dimvar}
+    
+    ;Information about variable attributes.
+    allAttrs = self.attributes -> Get(/ALL, COUNT=nAttrs)
+    for i = 0, nAttrs - 1 do begin
+        varAttr_struct = allAttrs[i] -> ToStruct(self.name)
+    
+        ;Create a structure tag out of the name.
+        ;   Convert to uppercase.
+        ;   Convert all non-alphanumeric characters to underscores.
+        tag = varAttr_struct._NAME
+        tag = strjoin(strsplit(strupcase(tag), '[^A-Z0-9]', /EXTRACT, /REGEX), '_')
+        
+        ;Add the attribute to the variable structure
+        var_struct = create_struct(var_struct, tag, varAttr_struct)
+    endfor
+    
+    return, var_struct
 end
 
 
