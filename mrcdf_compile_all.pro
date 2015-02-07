@@ -6,7 +6,7 @@
 
 ;Utilities
 .compile ./linkedlist__define.pro
-.compile ./ismember.pro
+.compile ./mrismember.pro
 .compile ./dissectdate.pro
 .compile ./dissectdatetime.pro
 .compile ./dissecttime.pro

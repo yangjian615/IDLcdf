@@ -87,11 +87,11 @@
 ; :Uses:
 ;   Uses the following external programs::
 ;       cgErrorMsg.pro
-;       CDF_Attribute__Define.pro
-;       CDF_CastDataType.pro
-;       CDF_Container__Define.pro
+;       MrCDF_Attribute__Define.pro
+;       MrCDF_CastDataType.pro
+;       MrCDF_Container__Define.pro
 ;       MrCDF_File_Examples.pro
-;       CDF_Variable__Define.pro
+;       MrCDF_Variable__Define.pro
 ;       MrCmpVersion.pro
 ;       MrCDF_Epoch_Parse.pro
 ;       MrCDF_Epoch_Compare.pro
@@ -123,6 +123,11 @@
 ;                           _OverloadHelp method. - MRA
 ;       2014/05/17  -   Added the ToStruct method. - MRA
 ;       2014/06/05  -   CDF files are no longer validated by default when opened. - MRA
+;       2015/02/06  -   _OverloadHelp/Print methods provide concise, well formatted
+;                           information. File compression is now possible. Added Copy*To
+;                           and Delete/Del* methods. The Close method now purges object
+;                           properties. DEPEND_0 params made into keywords in Read method.
+;                           Added SHOW keyword to Get*Names methods. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -203,58 +208,88 @@ function MrCDF_File::_OverloadPrint
 
     ;Has the file been parsed?
     if self.isParsed eq 0 then self -> ParseFile
-    
+
+;-----------------------------------------------------
+; File Properties \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     ;Number of global attributes
     self -> GetProperty, NGATTRS=gAttrCount, NVATTRS=vAttrCount, $
                          NRVARS=rVarCount, NZVARS=zVarCount
     
     ;File information
     fileStr   = string('FILENAME:',              self.filename, FORMAT='(a-33, a0)')
-    nGAttrStr = string('# Global Attributes:',   gAttrCount,    FORMAT='(a-30, i0)')
-    nVAttrStr = string('# Variable Attributes:', vAttrCount,    FORMAT='(a-30, i0)')
-    nRVarStr  = string('# R-Variables:',         rVarCount,     FORMAT='(a-30, i0)')
-    nZVarStr  = string('# Z-Variables:',         zVarCount,     FORMAT='(a-30, i0)')
+    nGAttrStr = string('   # Global Attributes:',   gAttrCount,    FORMAT='(a-30, i0)')
+    nVAttrStr = string('   # Variable Attributes:', vAttrCount,    FORMAT='(a-30, i0)')
+    nRVarStr  = string('   # R-Variables:',         rVarCount,     FORMAT='(a-30, i0)')
+    nZVarStr  = string('   # Z-Variables:',         zVarCount,     FORMAT='(a-30, i0)')
     
     ;Output string for the file
-    fileOut = [[fileStr], $
+    textOut = [[fileStr], $
                [nGAttrStr], $
                [nVAttrStr], $
                [nRVarStr], $
                [nZVarStr]]
-               
-    ;Offset everything from the file name
-    fileOut[0,1:*] = '   ' + fileOut[0,1:*]
     
-    ;Global attribute information
-    gAttrStr = 'GLOBAL ATTRIBUTES'
-    allGAttrs = self.attrs -> Get(/ALL, COUNT=gAttrCount)
-    for i = 0, gAttrCount - 1 do begin
-        allGAttrs[i] -> GetProperty, SCOPE=scope
-        if scope ne 'GLOBAL_SCOPE' then continue
+;-----------------------------------------------------
+; Global Attribute \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    if gAttrCount gt 0 then begin
+        gAttrHelp    = strarr(1, gAttrCount+1)
+        gAttrHelp[0] = 'GLOBAL ATTRIBUTES:'
+
+        ;Get help from the attributes.
+        allGAttrs = self.attrs -> Get(/ALL, COUNT=nAttrs)
+        gCount    = 0L
+        for i = 0, nAttrs - 1 do begin
+            ;Check if it is a global attribute
+            allGAttrs[i] -> GetProperty, SCOPE=scope
+            if strpos(scope, 'GLOBAL') eq -1 then continue
+            
+            ;Get help text
+            tempHelp = allGAttrs[i] -> _OverloadHelp()
+            gAttrHelp[0,gCount+1] = '  ' + tempHelp
+            gCount++
+        endfor
         
-        gAttrInfo = allGAttrs[i] -> _OverloadPrint()
-        gAttrInfo = '   ' + gAttrInfo
+        textOut = [[textOut], [gAttrHelp]]
+    endif
+
+;-----------------------------------------------------
+; R-Variables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    if rVarCount gt 0 then begin
+        rVarPrint = 'R-VARIABLES:'
         
-        ;Gather information from all attributes
-        gAttrStr = [[gAttrStr], [gAttrInfo]]
-    endfor
-    
-    zVarStr = 'Z-VARIABLES'
-    allZVars = self.zVars -> Get(/ALL, COUNT=zVarCount)
-    for i = 0, zVarCount - 1 do begin
-        zVarInfo = allZVars[i] -> _OverloadPrint()
-        zVarInfo = '   ' + zVarInfo
+        ;Get help from the variables
+        allRVars = self.rVars -> Get(/ALL, COUNT=rVarCount)
+        for i = 0, rVarCount - 1 do begin
+            rTemp           = allRVars[i] -> _OverloadHelp()
+            rVarHelp = [[rVarPrint], ['  ' + rTemp]]
+        endfor
         
-        ;Gather information from all z-variables
-        zVarStr = [[zVarStr], [zVarInfo]]
-    endfor
+        ;Concatenate
+        textOut = [[textOut], [rVarHelp]]
+    endif
+
+;-----------------------------------------------------
+; Z-Variables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    if zVarCount gt 0 then begin
+        zVarPrint = 'Z-VARIABLES:'
+
+        ;Get help from the variables
+        allZVars = self.zVars -> Get(/ALL, COUNT=zVarCount)
+        for i = 0, zVarCount - 1 do begin
+            ;Get the help text and take the 2nd element
+            zTemp    = allZVars[i] -> _OverloadPrint()
+            zVarPrint = [[zVarPrint], ['  ' + zTemp]]
+        endfor
+        
+        ;Concatenate
+        textOut = [[textOut], [zVarPrint]]
+    endif
     
-    ;Gather all of the output information
-    output = [[fileOut], $
-              [gAttrStr], $
-              [zVarStr]]
-    
-    return, output
+    return, textOut
 end
 
 
@@ -275,10 +310,17 @@ function MrCDF_File::_OverloadHelp, varname
     ;Has the file been parsed?
     if self.isParsed eq 0 then self -> ParseFile
     
-    ;Number of global attributes
+    ;General file properties
     self -> GetProperty, NGATTRS=gAttrCount, NVATTRS=vAttrCount, $
                          NRVARS=rVarCount, NZVARS=zVarCount, MAJORITY=majority, $
                          ENCODING=encoding, DECODING=decoding
+    
+    ;Compression
+    comp = self -> GetCompression(GZIP_LEVEL=gzip_level)
+    
+    ;Variable information
+    heapID  = obj_valid(self, /GET_HEAP_IDENTIFIER)
+    selfStr = obj_class(self) + '  <' + strtrim(heapID, 2) + '>'
     
     ;File information
     fileStr   = string('FILENAME:',                self.filename, FORMAT='(a-30, a0)')
@@ -288,61 +330,25 @@ function MrCDF_File::_OverloadHelp, varname
     nZVarStr  = string('  # Z-Variables:',         zVarCount,     FORMAT='(a-30, i0)')
     majorStr  = string('  Majority:',              majority,      FORMAT='(a-30, a0)')
     codeStr   = string('  Encoding/Decoding:',  encoding + '/' + decoding, FORMAT='(a-30, a0)')
+    case comp of
+        0: compStr = string('  Compression:', 'None',                       FORMAT='(a-30, a0)')
+        1: compStr = string('  Compression:', 'Run-Length Enconding',       FORMAT='(a-30, a0)')
+        2: compStr = string('  Compression:', 'Huffman',                    FORMAT='(a-30, a0)')
+        3: compStr = string('  Compression:', 'Adaptive Huffman',           FORMAT='(a-30, a0)')
+        5: compStr = string('  Compression:', 'GZip at level ', gzip_level, FORMAT='(a-30, a0, i0)')
+    endcase
     
     ;Output string for the file
-    helpOut = [[fileStr], $
+    helpOut = [[selfStr], $
+               [fileStr], $
                [nGAttrStr], $
                [nVAttrStr], $
                [nRVarStr], $
                [nZVarStr], $
                [majorStr], $
-               [codeStr]]
-    
-    ;Global Attributes
-    if gAttrCount gt 0 then begin
-        gAttrHelp    = strarr(1, gAttrCount+1)
-        gAttrHelp[0] = 'GLOBAL ATTRIBUTES:'
-    
-        ;Get help from the attributes.
-        allGAttrs = self.attrs -> Get(/ALL, COUNT=nAttrs)
-        for i = 0, nAttrs - 1 do begin
-            allGAttrs[i] -> GetProperty, SCOPE=scope
-            if strpos(scope, 'GLOBAL') eq -1 then continue
+               [codeStr], $
+               [compStr]]
         
-            gAttrHelp[0,i+1] = '  ' + allGAttrs[i] -> _OverloadHelp()
-        endfor
-        
-        helpOut = [[helpOut], [gAttrHelp]]
-    endif
-    
-    ;R-Variables
-    if rVarCount gt 0 then begin
-        rVarHelp    = strarr(1, zVarCount+1)
-        rVarHelp[0] = 'R-VARIABLES:'
-        
-        ;Get help from the variables
-        allRVars = self.rVars -> Get(/ALL, COUNT=rVarCount)
-        for i = 0, rVarCount - 1 do rVarHelp[0,i+1] = '  ' + allRVars[i] -> _OverloadHelp()
-        
-        ;Concatenate
-        helpOut = [[helpOut], [zVarHelp]]
-    endif
-    
-    ;Z-Variables
-    if zVarCount gt 0 then begin
-        zVarHelp = 'Z-VARIABLES:'
-
-        ;Get help from the variables
-        allZVars = self.zVars -> Get(/ALL, COUNT=zVarCount)
-        for i = 0, zVarCount - 1 do begin
-            zTemp = '  ' + allZVars[i] -> _OverloadHelp()
-            zVarHelp = [[zVarHelp], [zTemp]]
-        endfor
-        
-        ;Concatenate
-        helpOut = [[helpOut], [zVarHelp]]
-    endif
-    
     return, helpOut
 end
 
@@ -351,10 +357,32 @@ end
 ;   Close the CDF file
 ;-
 pro MrCDF_File::Close
-    on_error, 2
 
-    cdf_close, self.fileID
-    self.fileID = 0
+    ;Close the CDF file -- An error will occur if it has already been closed.
+    catch, the_error
+    if the_error eq 0 then begin
+        cdf_close, self.fileID
+        self.fileID = 0
+    endif else begin
+        if stregex(!error_state.msg, 'Invalid CDFid', /BOOLEAN) then return
+        void = cgErrorMSG()
+        return
+    endelse
+    catch, /CANCEL
+    on_error, 2
+    
+    ;Reset properties.
+    self.decoding  = ''
+    self.encoding  = ''
+    self.filename  = ''
+    self.majority  = ''
+    self.writeable = 0B
+    self.isParsed  = 0B
+    
+    ;Remove all
+    self.attrs -> Remove, /ALL, /DESTROY
+    self.rVars -> Remove, /ALL, /DESTROY
+    self.zVars -> Remove, /ALL, /DESTROY
 end
 
 
@@ -427,6 +455,17 @@ end
 ;       DIMENSIONS:         in, optional, type=lonarr, default=0
 ;                           Create a z-variable with the specified dimensions. If not
 ;                               set, a scalar is assumed. Automatically sets `ZVARIABLE`=1.
+;       COMPRESSION:        in, optional, type=string/integer, default='None'
+;                           Type of variable compression to perform. Options are::
+;                               0 or 'None'
+;                               1 or 'Run-Length Encoding'
+;                               2 or 'Huffman'
+;                               3 or 'Adaptive Huffman'
+;                               5 or 'GZIP'
+;       GZIP_LEVEL:         in, optional, type=integer, default=5
+;                           The desired effort for the GZIP compression. This effort must
+;                               be expressed as a scalar in the range (1-9). If set, then
+;                               `COMPRESSION` is set to 5 automatically.
 ;       NUMELEM:            in, optional, type=long, default=1
 ;                           Number of elements of data at each variable value. Only valid
 ;                               if `DATATYPE` is "CDF_CHAR" or "CDF_UCHAR" and indicates
@@ -440,7 +479,9 @@ end
 ;-
 pro MrCDF_File::CreateVar, varName, datatype, dimVary, $
 ALLOCATERECS=allocaterecs, $
+COMPRESSION=compression, $
 DIMENSIONS=dimensions, $
+GZIP_LEVEL=gzip_level, $
 NUMELEM=numelem, $
 REC_NOVARY=rec_novary, $
 ZVARIABLE=zvariable
@@ -453,7 +494,10 @@ ZVARIABLE=zvariable
         void = cgErrorMsg()
         return
     endif
-    
+
+;-------------------------------------------------------
+; Check Inputs /////////////////////////////////////////
+;-------------------------------------------------------
     ;Check if the file is writable
     if self.writeable eq 0 then $
         message, 'File is not writable. Cannot add new variable.'
@@ -468,7 +512,7 @@ ZVARIABLE=zvariable
 
     ;Get the CDF data type
     if strpos(datatype, 'CDF') eq -1 $
-        then cdf_type = CDF_CastDataType(datatype, /TNAME) $
+        then cdf_type = MrCDF_CastDataType(datatype, /TNAME) $
         else cdf_type = datatype
     
     ;Set the proper flag
@@ -494,31 +538,75 @@ ZVARIABLE=zvariable
        else: message, 'CDF datatype not recognized: "' + cdf_type + '".'
     endcase
 
-    ;Write the data
+;-------------------------------------------------------
+; Write Data ///////////////////////////////////////////
+;-------------------------------------------------------
     if n_elements(dimVary) eq 0 then begin
-        varID = cdf_varcreate(self.fileID, varName, ALLOCATERECS=allocaterecs, $
-                              DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
-                              ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
-                              CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
-                              CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
-                              CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
-                              CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
-                              CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
-                              CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+        varID = cdf_varcreate(self.fileID, varName, $
+                              ALLOCATERECS    = allocaterecs, $
+                              DIMENSIONS      = dimensions, $
+                              NUMELEM         = numelem, $
+                              REC_NOVARY      = rec_novary, $
+                              ZVARIABLE       = zvariable, $
+                              CDF_BYTE        = cdf_byte, $
+                              CDF_CHAR        = cdf_char, $
+                              CDF_DOUBLE      = cdf_double, $
+                              CDF_EPOCH       = cdf_epoch, $
+                              CDF_LONG_EPOCH  = cdf_long_epoch, $
+                              CDF_FLOAT       = cdf_float, $
+                              CDF_INT1        = cdf_int1, $
+                              CDF_INT2        = cdf_int2, $
+                              CDF_INT4        = cdf_int4, $
+                              CDF_REAL4       = cdf_real4, $
+                              CDF_REAL8       = cdf_real8, $
+                              CDF_UCHAR       = cdf_uchar, $
+                              CDF_UINT1       = cdf_uint1, $
+                              CDF_UINT2       = cdf_uint2, $
+                              CDF_UINT4       = cdf_uint4, $
+                              CDF_INT8        = cdf_int8, $
+                              CDF_TIME_TT2000 = cdf_time_tt2000)
     endif else begin
-        varID = cdf_varcreate(self.fileID, varName, dimVary, ALLOCATERECS=allocaterecs, $
-                              DIMENSIONS=dimensions, NUMELEM=numelem, REC_NOVARY=rec_novary, $
-                              ZVARIABLE=zvariable, CDF_BYTE=cdf_byte, CDF_CHAR=cdf_char, $
-                              CDF_DOUBLE=cdf_double, CDF_EPOCH=cdf_epoch, $
-                              CDF_LONG_EPOCH=cdf_long_epoch, CDF_FLOAT=cdf_float, $
-                              CDF_INT1=cdf_int1, CDF_INT2=cdf_int2, CDF_INT4=cdf_int4, $
-                              CDF_REAL4=cdf_real4, CDF_REAL8=cdf_real8, CDF_UCHAR=cdf_uchar, $
-                              CDF_UINT1=cdf_uint1, CDF_UINT2=cdf_uint2, CDF_UINT4=cdf_uint4, $
-                              CDF_INT8=cdf_int8, CDF_TIME_TT2000=cdf_time_tt2000)
+        varID = cdf_varcreate(self.fileID, varName, dimVary, $
+                              ALLOCATERECS    = allocaterecs, $
+                              DIMENSIONS      = dimensions, $
+                              NUMELEM         = numelem, $
+                              REC_NOVARY      = rec_novary, $
+                              ZVARIABLE       = zvariable, $
+                              CDF_BYTE        = cdf_byte, $
+                              CDF_CHAR        = cdf_char, $
+                              CDF_DOUBLE      = cdf_double, $
+                              CDF_EPOCH       = cdf_epoch, $
+                              CDF_LONG_EPOCH  = cdf_long_epoch, $
+                              CDF_FLOAT       = cdf_float, $
+                              CDF_INT1        = cdf_int1, $
+                              CDF_INT2        = cdf_int2, $
+                              CDF_INT4        = cdf_int4, $
+                              CDF_REAL4       = cdf_real4, $
+                              CDF_REAL8       = cdf_real8, $
+                              CDF_UCHAR       = cdf_uchar, $
+                              CDF_UINT1       = cdf_uint1, $
+                              CDF_UINT2       = cdf_uint2, $
+                              CDF_UINT4       = cdf_uint4, $
+                              CDF_INT8        = cdf_int8, $
+                              CDF_TIME_TT2000 = cdf_time_tt2000)
     endelse
-    
-    ;Add the variable object
+
+;-------------------------------------------------------
+; Add to Object ////////////////////////////////////////
+;-------------------------------------------------------
     self -> CreateVarObj, varName
+
+;-------------------------------------------------------
+; Set Compression //////////////////////////////////////
+;-------------------------------------------------------
+    if (n_elements(compression) gt 0) || (n_elements(gzip_level) gt 0) then begin
+        if n_elements(allocaterecs) gt 0 then begin
+            message, 'Records have been allocated with ALLOCATERECS. Cannot set compression.', /INFORMATIONAL
+        endif else begin
+            tf_has = self -> HasVar(varName, OBJECT=varObj)
+            varObj -> SetCompression, comp, GZIP_LEVEL=gzip_level
+        endelse
+    endif
 end
 
 
@@ -584,102 +672,134 @@ end
 ;   Get the value of a variable attribute.
 ;
 ; :Params:
-;       VARIABLE:           in, required, type=string/object
-;                           Name or CDF_Variable object of the variable for which the
-;                               variable attribute names are desired.
-;       ATTRNAME:           in, required, type=string
-;                           Name of the variable attribute whose value is to be returned.
+;       GATTRIBUTE:         in, required, type=string/object
+;                           Name or MrCDF_Attribute object of the global attribute to be
+;                               copied. Must not already exist in `DESTOBJ`.
+;       DESTOBJ:            in, required, type=string
+;                           MrCDF_File object to which the global attribute is to be copied.
 ;-
-function MrCDF_File::CopyGlobalAttrTo, attrName, destObj
+pro MrCDF_File::CopyGlobalAttrTo, gAttribute, destObj
     compile_opt strictarr
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
-    case size(gAttr, /TNAME) of
-        'OBJREF': attrObj = gAttribute
+    case size(gAttribute, /TNAME) of
+        'OBJREF': gAttrObj = gAttribute
         'STRING': begin
-            attrObj = self.attributes -> FindByName(gAttribute, COUNT=gAttrCount)
+            gAttrObj = self.attrs -> FindByName(gAttribute, COUNT=gAttrCount)
             if gAttrCount eq 0 then $
                 message, 'Cannot find global attribute with name "' + gAttribute + '".'
-            if obj_valid(attrObj) eq 0 then $
-                message, 'Attribute object invalid for "' + gAttribute + '".'
+            if obj_valid(gAttrObj) eq 0 then $
+                message, 'Global attribute object invalid for "' + gAttribute + '".'
         endcase
         else: message, 'GATTRIBUTE must be an attribute name or object.'
     endcase
 
-    ;Get the attribute's value
-    attrValue = varObj -> GetAttrValue(attrName, DATATYPE=datatype)
+    ;Get the attribute's value.
+    gAttrName  = gAttrObj -> GetName()
     
-    ;Write the variable attribute to the destination file
-    destObj -> WriteGlobalAttr, attrName, attrValue, DATATYPE=datatype
+    ;Copy attribute
+    destObj -> CreateAttr, gAttrName
+    
+    ;Find which entries have values
+    mask = gAttrObj -> GetEntryMask(NUMGENTRIES=nGEntries)
+    iGEntry = where(mask eq 1, nToCopy)
+    if nToCopy eq 0 then return
+
+    ;Copy values
+    for i = 0, nToCopy - 1 do begin
+        gAttrValue = gAttrObj -> GetGlobalAttrValue(iGEntry[i])
+        destObj -> WriteGlobalAttr, gAttrName, gAttrValue
+    endfor
 end
 
 
 ;+
-;   Get the value of a variable attribute.
+;   Copy a variable attribute from one CDF file to another.
 ;
 ; :Params:
-;       VARIABLE:           in, required, type=string/object
-;                           Name or CDF_Variable object of the variable for which the
-;                               variable attribute names are desired.
-;       ATTRNAME:           in, required, type=string
-;                           Name of the variable attribute whose value is to be returned.
+;       VATTRIBUTE:         in, required, type=string/object
+;                           Name or MrCDF_Attribute object of the variable attribute to be
+;                               copied. Must not already exist in `DESTOBJ`.
+;       DESTOBJ:            in, required, type=string
+;                           MrCDF_File object to which the variable attribute is to be
+;                               copied.
+;
+; :Keywords:
+;       VARNAME:            in, optional, type=string
+;                           Name of the variable for which the variable attribute value
+;                               should be copied. If the variable does not exist in
+;                               `DESTOBJ`, an error will occur.
 ;-
-function MrCDF_File::CopyVarAttrTo, variable, attrName, destObj
+pro MrCDF_File::CopyVarAttrTo, vAttribute, destObj, $
+varname=varname
     compile_opt strictarr
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     ;Get the variable object
-    case size(variable, /TNAME) of
-        'OBJREF': varObj = varName
+    case size(vAttribute, /TNAME) of
+        'OBJREF': attrObj = vAttribute
         
         'STRING': begin
-            varObj = self.variables -> FindByName(variable, COUNT=varCount)
+            attrObj = self.attrs -> FindByName(vAttribute, COUNT=varCount)
             if varCount eq 0 then $
-                message, 'Cannot find variable with name "' + variable + '".'
-            if obj_valid(varObj) eq 0 then $
-                message, 'Variable object invalid for "' + variable + '".'
+                message, 'Cannot find variable attribute with name "' + vAttribute + '".'
+            if obj_valid(attrObj) eq 0 then $
+                message, 'Variable attribute object invalid for "' + vAttribute + '".'
         endcase
         
-        else: message, 'VARIABLE must be an attribute name or object.'
+        else: message, 'vAttribute must be an attribute name or object.'
     endcase
 
-    ;Get the variable attribute's value
-    attrValue = varObj -> GetAttrValue(attrName, DATATYPE=datatype)
+    ;Get the name
+    vAttrName = attrObj -> GetName()
     
-    ;Write the variable attribute to the destination file
-    destObj -> WriteVarAttr, varName, attrName, attrValue, DATATYPE=datatype
+    ;Copy Attribute
+    if n_elements(varname) eq 0 then begin
+        destObj -> CreateAttr, vAttrName, /VARIABLE_SCOPE
+    
+    ;Copy value
+    endif else begin
+        ;Get the attribute value
+        vAttrValue = attrObj -> GetVarAttrValue(varname)
+        
+        ;Copy Attribute value
+        destObj -> WriteVarAttr, varname, vAttrName, vAttrValue
+    endelse
 end
 
 
 ;+
-;   Get the value of a variable attribute.
+;   Copy a variable, its data, and its variable attributes to another file.
 ;
 ; :Params:
 ;       VARIABLE:           in, required, type=string/object
 ;                           Name or CDF_Variable object of the variable for which the
-;                               variable attribute names are desired.
-;       ATTRNAME:           in, required, type=string
-;                           Name of the variable attribute whose value is to be returned.
+;                               variable attribute names are desired. Must not already
+;                               exist in `DESTOBJ`.
+;       DESTOBJ:            in, required, type=string
+;                           MrCDF_File object to which the variable and its data is to be
+;                               copied.
 ;-
-function MrCDF_File::CopyVariableTo, variable, destObj
+pro MrCDF_File::CopyVariableTo, variable, destObj
     compile_opt strictarr
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     ;Get the variable object
     case size(variable, /TNAME) of
-        'OBJREF': varObj = varName
+        'OBJREF': varObj = variable
         
         'STRING': begin
-            varObj = self.variables -> FindByName(variable, COUNT=varCount)
+            varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+            if varCount eq 0 then varObj = self.rVars -> FindByName(variable, COUNT=varCount)
             if varCount eq 0 then $
                 message, 'Cannot find variable with name "' + variable + '".'
             if obj_valid(varObj) eq 0 then $
@@ -690,18 +810,37 @@ function MrCDF_File::CopyVariableTo, variable, destObj
     endcase
 
     ;Does the variable exist in the destination? If not, create it.
-    if ~destObj -> HasVar(varName) then self -> CopyVarDefTo, varName, destObj
+    varname = varObj  -> GetName()
     
-    ;Does the variable have attributes? Copy them.
-    varAttrNames = varObj -> GetAttrNames(COUNT=nVarAttrs)
-    for i = 0, nVarAttrs - 1 do begin
-        thisAttrName = varAttrNames[i]
-        if ~destObj -> HasVarAttr(thisAttrName) then $
-            self -> CopyVarAttrTo, varName, thisAttrName, destObj
-    endfor
+    ;Get the variable definition
+    varObj -> GetProperty, COMPRESSION = compression, $
+                           DATATYPE    = datatype, $
+                           DIMVAR      = dimvary, $
+                           DIMENSIONS  = dimensions, $
+                           GZIP_LEVEL  = gzip_level, $
+                           MAXREC      = maxrec, $
+                           NELEMENTS   = numelem, $
+                           RECVAR      = recvar, $
+                           ZVARIABLE   = zvariable
+    
+    ;Copy to destination
+    destObj -> CreateVar, varname , datatype, dimvary, $
+                          ALLOCATERECS = maxrec+1, $
+                          COMPRESSION  = compression, $
+                          DIMENSIONS   = dimensions, $
+                          GZIP_LEVEL   = gzip_level, $
+                          NUMELEM      = numelem, $
+                          REC_NOVARY   = ~recvar, $
+                          ZVARIABLE    = zvariable
     
     ;Copy the variable's data
     self -> CopyVarDataTo, varName, destObj
+    
+    ;Copy the variable's attributes.
+    varAttrNames = varObj -> GetAttrNames(COUNT=nVarAttrs)
+    for i = 0, nVarAttrs - 1 do begin
+        self -> CopyVarAttrTo, varAttrNames[i], destObj, VARNAME=varname
+    endfor
 end
 
 
@@ -715,10 +854,10 @@ end
 ;       VARIABLE:           in, required, type=string/object
 ;                           Name or CDF_Variable object of the variable for which the
 ;                               variable attribute names are desired.
-;       ATTRNAME:           in, required, type=string
-;                           Name of the variable attribute whose value is to be returned.
+;       DESTOBJ:            in, required, type=string
+;                           The MrCDF_File object to which the variable's data is copied.
 ;-
-function MrCDF_File::CopyVarDataTo, variable, destObj, $
+pro MrCDF_File::CopyVarDataTo, variable, destObj, $
 COUNT=count, $
 INTERVAL=interval, $
 OFFSET=offset, $
@@ -728,14 +867,15 @@ REC_START=rec_start
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     ;Get the variable object
     case size(variable, /TNAME) of
-        'OBJREF': varObj = varName
+        'OBJREF': varObj = variable
         
         'STRING': begin
-            varObj = self.variables -> FindByName(variable, COUNT=varCount)
+            varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+            if varCount eq 0 then varObj = self.zVars -> FindByName(variable, COUNT=varCount)
             if varCount eq 0 then $
                 message, 'Cannot find variable with name "' + variable + '".'
             if obj_valid(varObj) eq 0 then $
@@ -747,9 +887,30 @@ REC_START=rec_start
 
     ;Get the data
     data = varObj -> GetValue()
+    name = varObj -> GetName()
     
     ;Write the information
-    destObj -> WriteVarData
+    destObj -> WriteVar, name, data, $
+                         COUNT        = count, $
+                         INTERVAL     = interval, $
+                         OFFSET       = offset, $
+                         REC_INTERVAL = rec_interval, $
+                         REC_START    = rec_start
+end
+
+
+;+
+;   Delete the CDF file
+;-
+pro MrCDF_File::Delete
+    compile_opt idl2
+    on_error, 2
+    
+    ;Delete the file
+    cdf_delete, self.fileID
+    
+    ;Close the file to flush object content
+    self -> Close
 end
 
 
@@ -763,7 +924,7 @@ end
 ;                           Entry number to be deleted. If not present, then entire
 ;                               attribute is deleted.
 ;-
-function MrCDF_File::DelGlobalAttr, gAttrName, entrynNum
+pro MrCDF_File::DelGlobalAttr, gAttrName, entrynNum
     compile_opt strictarr
     on_error, 2
 
@@ -772,67 +933,117 @@ function MrCDF_File::DelGlobalAttr, gAttrName, entrynNum
         message, 'Cannot delete global attribute because file is READ-ONLY.'
         
     ;Check to see if the global attribute exists
-    tf_Has = self -> HasGlobalAttr(gAttrName, OBJECT=object)
+    tf_Has = self -> HasAttr(gAttrName, OBJECT=gAttrObj)
     if tf_has eq 0 then message, 'Global attribute name does not exist: "' + gAttrName + '".'
     
-    ;Delete the attribute
-    if n_elements(entryNum) gt 0 $
-        then cdf_attdelete, self.fileID, gAttrName, entryNum $
-        else cdf_attdelete, self.fileID, gAttrName
-    
-    ;Remove the attribute from the container
-    self.attributes -> Remove, object, /DESTROY
+    ;Remove value
+    if n_elements(entryNum) gt 0 then begin
+        cdf_attdelete, self.fileID, gAttrName, entryNum
+        
+    ;Delete Attribute
+    endif else begin
+        cdf_attdelete, self.fileID, gAttrName
+        self.attributes -> Remove, gAttrObj, /DESTROY
+    endelse
 end
 
 
 ;+
-;   Get the compression type for the CDF file or variable.
+;   Delete a global attribute from the file.
 ;
-; :Keywords:
-;       VARIABLE:           in, optional, type=string
-;                           Name of the variable whose compression settings are to
-;                               be retrieved. The default is to retrieve the compression
-;                               settings of the file.
-;       GZIP_LEVEL:         out, optional, type=byte
-;                           Desired effort of GZip compression, from 1-9.
-;
-; :Returns:
-;       COMPRESSION:        Type of compression set for the file or `VARIABLE`::
-;                               0 - No compression
-;                               1 - Run-Length Encoding
-;                               2 - Huffman
-;                               3 - Adaptive Huffman
-;                               5 - GZip (See the `GZIP_LEVEL` keyword)
+; :Params:
+;       VATTRNAME:          in, required, type=string
+;                           Name of the variable attribute to be deleted from the CDF file.
+;       VARNAME:            in, optional, type=integer
+;                           Name of the variable attribute from which the attribute is
+;                               deleted. If not present, the entire attribute is deleted.
 ;-
-function MrCDF_File::GetCompression, $
-VARIABLE=variable, $
-GZIP_LEVEL=gzip_level
+pro MrCDF_File::DelVarAttr, vAttrName, varname
     compile_opt strictarr
+    on_error, 2
 
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return, -1
-    endif
+    ;File must be parsed first
+    if self.writeable eq 0 then $
+        message, 'Cannot delete global attribute because file is READ-ONLY.'
+        
+    ;Check to see if the global attribute exists
+    tf_Has = self -> HasAttr(gAttr, OBJECT=vAttrObj, /VARIABLE_SCOPE)
+    if tf_has eq 0 then message, 'Variable attribute name does not exist: "' + vAttrName + '".'
 
-    ;Defaults/dependencies
-    if n_elements(compression) eq 0 then compression = 0
-    if n_elements(gzip_level)  gt 0 then compression = 5
+;-------------------------------------------------------
+; Delete from Variable /////////////////////////////////
+;-------------------------------------------------------
+    if n_elements(varname) gt 0 then begin
+        ;Check if the variable exists
+        tf_has = self -> HasVar(varname, OBJECT=varObj, ISZVAR=isZVar)
+        if ~tf_has then message, 'Variable name does not exist: "' + varname + '".'
+        
+        ;Get the variable number
+        varnum = varObj -> GetNumber()
     
-    ;Variable Compression
-    if n_elements(variable) gt 0 then begin
-        cdf_compression, self.fileID, GET_VAR_GZIP_LEVEL=gzip_level, $
-                         GET_VAR_COMPRESSION=compression, VARIABLE=variable
-    
-    ;File Compression
+        ;Delete the attribute from the variable
+        cdf_attdelete, self.fileID, vAttrName, varnum
+
+;-------------------------------------------------------
+; Delete from File /////////////////////////////////////
+;-------------------------------------------------------
     endif else begin
-        cdf_compression, self.fileID, GET_COMPRESSION=compression, $
-                         GET_GZIP_LEVEL=gzip_level
+        cdf_attdelete, self.fileID, vAttrName
+        self.attributes -> Remove, vAttrObj, /DESTROY
     endelse
+end
+
+
+;+
+;   Delete a variable from the file.
+;
+; :Params:
+;       VARNAME:            in, required, type=string
+;                           Name of the variable to be deleted from the CDF file.
+;-
+pro MrCDF_File::DelVariable, varname
+    compile_opt strictarr
+    on_error, 2
+
+    ;File must be parsed first
+    if self.writeable eq 0 then $
+        message, 'Cannot delete variable because file is READ-ONLY.'
+        
+    ;Check to see if the global attribute exists
+    tf_Has = self -> HasVar(varname, ISZVAR=isZVar, OBJECT=varObj)
+    if tf_has eq 0 then message, 'Variable name does not exist: "' + varname + '".'
     
-    return, compression
+    ;Delete the variable
+    cdf_vardelete, self.fileID, varname, ZVARIABLE=isZVar
+    
+    ;Remove the variable from the container
+    if isZVar $
+        then self.zVars -> Remove, varObj, /DESTROY $
+        else self.rVars -> Remove, varObj, /DESTROY
+end
+
+
+;+
+;   The purpose of this method is to print information about the file.
+;-
+pro MrCDF_File::FileHelp
+    compile_opt strictarr
+    on_error, 2
+
+    outHelp = self -> _OverloadHelp()
+    print, outHelp
+end
+
+
+;+
+;   The purpose of this method is to print information about the file.
+;-
+pro MrCDF_File::FilePrint
+    compile_opt strictarr
+    on_error, 2
+
+    outInfo = self -> _OverloadPrint()
+    print, outInfo
 end
 
 
@@ -890,6 +1101,7 @@ end
 function MrCDF_File::GetAttrNames, $
 ALL=all, $
 COUNT=count, $
+SHOW=show, $
 VARIABLE_SCOPE=variable_scope
     compile_opt strictarr
     on_error, 2
@@ -899,6 +1111,7 @@ VARIABLE_SCOPE=variable_scope
 
     ;Defaults
     all            = keyword_set(all)
+    show           = keyword_set(show)
     variable_scope = all ? 1 : keyword_set(variable_scope)
     global_scope   = all ? 1 : ~variable_scope
 
@@ -920,7 +1133,7 @@ VARIABLE_SCOPE=variable_scope
         endif
         
         ;Keep variable attributes
-        if global_scope && scope eq 'VARIABLE_SCOPE' then begin
+        if variable_scope && scope eq 'VARIABLE_SCOPE' then begin
             attrNames[count] = name
             count++
         endif
@@ -930,6 +1143,9 @@ VARIABLE_SCOPE=variable_scope
     if count eq 1 $
         then attrNames = attrNames[0] $
         else attrNames = attrNames[0:count-1]
+    
+    ;Print the names?
+    if show then print, transpose(attrNames)
 
     ;Return a scalar?
     return, attrNames
@@ -988,8 +1204,14 @@ end
 ;   Get the names of the CDF variables.
 ;
 ; :Keywords:
+;       ALL:                in, optional, type=boolean, default=0
+;                           If set, the names of both r- and z-variables are returned.
 ;       COUNT:              out, optional, type=integer
 ;                           Number of variable names returned.
+;       RVARIABLE:          in, optional, type=boolean, default=0
+;                           If set, r-variable names returned.
+;       SHOW:               in, optional, type=boolean, default=0
+;                           If set, variable names will be printed to the command window.
 ;
 ; :Returns:
 ;       VARNAMES:           Name(s) of the variable(s) within the CDF file. If no
@@ -998,7 +1220,8 @@ end
 function MrCDF_File::GetVarNames, $
 ALL=all, $
 COUNT=nVars, $
-RVARIABLE=rVariable
+RVARIABLE=rVariable, $
+SHOW=show
     compile_opt strictarr
     
     ;Error handling
@@ -1010,14 +1233,15 @@ RVARIABLE=rVariable
     endif
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
     
     ;Defaults
-    all = keyword_set(all)
+    all  = keyword_set(all)
+    show = keyword_set(show)
     rVariable = all eq 1 ? 1 : keyword_set(rVariable)
     zVariable = all eq 1 ? 1 : ~rVariable
 
-    ;Count the number of global attributes
+    ;Count the number of r- and z-variables
     nRVars = (rVariable eq 0) ? 0 : self.rVars -> Count()
     nZVars = (zVariable eq 0) ? 0 : self.zVars -> Count()
     nVars  = nRVars + nZVars
@@ -1036,6 +1260,9 @@ RVARIABLE=rVariable
         allZ = self.zVars -> Get(/ALL)
         for i = 0, nZVars-1 do varNames[nRVars+i] = allZ[i] -> GetName()
     endif
+
+    ;Print results?
+    if show then print, transpose(varNames)
 
     ;Return a scalar?
     if nVars eq 1 then varNames = varNames[0]
@@ -1057,13 +1284,16 @@ end
 ;       ERROR:              out, optional, type=integer
 ;                           Named variable to recieve the error code. 0 indicates no
 ;                               error. If present, the error message will be suppressed.
+;       SHOW:               in, optional, type=boolean, default=0
+;                           If set, variable attribute names are printed to the command window.
 ;
 ; :Returns:
 ;       ATTRNAMES:          Name(s) of the variable attributes associated with `VARIABLE`
 ;-
 function MrCDF_File::GetVarAttrNames, variable, $
 COUNT=varAttrCount, $
-ERROR=the_error
+ERROR=the_error, $
+SHOW=show
     compile_opt strictarr
     
     ;Error handling
@@ -1090,11 +1320,11 @@ ERROR=the_error
                 message, 'Attribute object invalid for "' + variable + '".'
         endcase
         
-        else: message, 'GATTRIBUTE must be an attribute name or object.'
+        else: message, 'VARIABLE must be an variable name or object.'
     endcase
 
     ;Get the value
-    varAttrNames = varObj -> GetAttrNames(COUNT=varAttrCount, ERROR=the_error)
+    varAttrNames = varObj -> GetAttrNames(COUNT=varAttrCount, ERROR=the_error, SHOW=show)
     if the_error ne 0 then message, /REISSUE_LAST
     
     return, varAttrNames
@@ -1271,10 +1501,12 @@ end
 ;                           Flag indicating that the file is writeable (1) or read-only (0).
 ;-
 pro MrCDF_File::GetProperty, $
+COMPRESSION=compression, $
 DECODING=decoding, $
 ENCODING=encoding, $
 FILENAME=filename, $
 FILEID=fileID, $
+GZIP_LEVEL=gzip_level, $
 MAJORITY=majority, $
 NATTRS=nAttrs, $
 NGATTRS=nGAttrs, $
@@ -1286,17 +1518,28 @@ WRITEABLE=writeable
     compile_opt strictarr
     on_error, 2
     
-    if arg_present(decoding)  then decoding  = self.decoding
-    if arg_present(encoding)  then encoding  = self.encoding
-    if arg_present(filename)  then filename  = self.filename
-    if arg_present(fileID)    then fileID    = self.fileID
-    if arg_present(majority)  then majority  = self.majority
-    if arg_present(nAttrs)    then nAttrs    = self.attrs -> Count()
-    if arg_present(nGAttrs)   then void      = self -> GetAttrNames(COUNT=nGAttrs)
-    if arg_present(nVAttrs)   then void      = self -> GetAttrNames(COUNT=nVAttrs, /VARIABLE_SCOPE)
-    if arg_present(nRVars)    then nrvars    = self.rVars -> Count()
-    if arg_present(nZVars)    then nzvars    = self.zVars -> Count()
-    if arg_present(writeable) then writeable = self.writeable
+    if arg_present(decoding)   then decoding   = self.decoding
+    if arg_present(encoding)   then encoding   = self.encoding
+    if arg_present(filename)   then filename   = self.filename
+    if arg_present(fileID)     then fileID     = self.fileID
+    if arg_present(gzip_level) then gzip_level = *self.gzip_level
+    if arg_present(majority)   then majority   = self.majority
+    if arg_present(nAttrs)     then nAttrs     = self.attrs -> Count()
+    if arg_present(nGAttrs)    then void       = self -> GetAttrNames(COUNT=nGAttrs)
+    if arg_present(nVAttrs)    then void       = self -> GetAttrNames(COUNT=nVAttrs, /VARIABLE_SCOPE)
+    if arg_present(nRVars)     then nrvars     = self.rVars -> Count()
+    if arg_present(nZVars)     then nzvars     = self.zVars -> Count()
+    if arg_present(writeable)  then writeable  = self.writeable
+    
+    if arg_present(compression) then begin
+        case self.compression of
+            0: compression = 'None'
+            1: compression = 'Run-Length Encoding'
+            2: compression = 'Huffman'
+            3: compression = 'Adaptive Huffman'
+            5: compression = 'GZIP'
+        endcase
+    endif
     
     if arg_present(nvars) then begin
         nRVars = self.rVars -> Count()
@@ -1338,10 +1581,9 @@ OBJECT=object
 
     ;Try to find the object
     object = self.attrs -> FindByName(attrName, COUNT=count)
+    if count eq 0 then return, 0
     
-    if count gt 0 $
-        then return, 1 $
-        else return, 0
+    return, 1
 end
 
 
@@ -1376,9 +1618,7 @@ OBJECT=object
     endif
         
     ;Was the variable found?
-    if count gt 0 $
-        then return, 1 $
-        else return, 0
+    return, (count gt 0)
 end
 
 
@@ -1509,7 +1749,7 @@ VALIDATE = validate
     clobber             = keyword_Set(clobber)
     create              = keyword_set(create)
     modify              = keyword_set(modify)
-    row_major           = n_elements(row_major) eq 0 ? 0 : keyword_set(row_major)
+    row_major           = keyword_set(row_major)
     no_validate         = ~n_elements(validate)
     col_major           = ~row_major
     if n_elements(encoding) eq 0 then encoding = 'HOST'
@@ -1546,13 +1786,10 @@ VALIDATE = validate
     ;If we are opening a file, make sure it exists
     if mode eq 'OPEN' then begin
         if file_test(filename, /READ) eq 0 then $
-            message, 'The CDF file cannot be opened for reading: "' + filename + '".'
+            message, 'File does not exist. Cannot read: "' + filename + '".'
         if modify && file_test(filename, /WRITE) eq 0 then $
-            message, 'The CDF file cannot be opened for writing: "' + filename + '".'
+            message, 'Cannot write to file: "' + filename + '".'
     endif
-    
-    ;Set the filename
-    self.filename = filename
     
     ;Validate the file (IDL v8.0+)
     if no_validate && MrCmpVersion('8.0') le 0 then cdf_set_validate, /NO
@@ -1600,48 +1837,50 @@ VALIDATE = validate
     case mode of
         'OPEN':   fileID = cdf_open(filename, READONLY=~modify)
         'CREATE': begin
-            fileID = cdf_create(filename, ROW_MAJOR=row_major, COL_MAJOR=col_major, $
-                                MULTI_FILE=multi_file, $
-                                ALPHAOSF1_ENCODING=alphaosf1_encoding, $
-                                ALPHAVMSD_ENCODING=alphavmsd_encoding, $
-                                ALPHAVMSG_ENCODING=alphavmsg_encoding, $
-                                DECSTATION_ENCODING=decstation_encoding, $
-                                HOST_ENCODING=host_encoding, $
-                                HP_ENCODING=hp_encoding, $
-                                IBMPC_ENCODING=ibmpc_encoding, $
-                                IBMRS_ENCODING=ibmrs_encoding, $
-                                MAC_ENCODING=mac_encoding, $
-                                NETWORK_ENCODING=network_encoding, $
-                                NEXT_ENCODING=next_encoding, $
-                                SGI_ENCODING=sgi_encoding, $
-                                SUN_ENCODING=sun_encoding, $
-                                ALPHAOSF1_DECODING=alphaosf1_decoding, $
-                                ALPHAVMSD_DECODING=alphavmsd_decoding, $
-                                ALPHAVMSG_DECODING=alphavmsg_decoding, $
-                                DECSTATION_DECODING=decstation_decoding, $
-                                HOST_DECODING=host_decoding, $
-                                HP_DECODING=hp_decoding, $
-                                IBMPC_DECODING=ibmpc_decoding, $
-                                IBMRS_DECODING=ibmrs_decoding, $
-                                MAC_DECODING=mac_decoding, $
-                                NETWORK_DECODING=network_decoding, $
-                                NEXT_DECODING=next_decoding, $
-                                SGI_DECODING=sgi_decoding, $
-                                SUN_DECODING=sun_decoding)
+            fileID = cdf_create(filename, $
+                                ROW_MAJOR           = row_major, $
+                                COL_MAJOR           = col_major, $
+                                MULTI_FILE          = multi_file, $
+                                ALPHAOSF1_ENCODING  = alphaosf1_encoding, $
+                                ALPHAVMSD_ENCODING  = alphavmsd_encoding, $
+                                ALPHAVMSG_ENCODING  = alphavmsg_encoding, $
+                                DECSTATION_ENCODING = decstation_encoding, $
+                                HOST_ENCODING       = host_encoding, $
+                                HP_ENCODING         = hp_encoding, $
+                                IBMPC_ENCODING      = ibmpc_encoding, $
+                                IBMRS_ENCODING      = ibmrs_encoding, $
+                                MAC_ENCODING        = mac_encoding, $
+                                NETWORK_ENCODING    = network_encoding, $
+                                NEXT_ENCODING       = next_encoding, $
+                                SGI_ENCODING        = sgi_encoding, $
+                                SUN_ENCODING        = sun_encoding, $
+                                ALPHAOSF1_DECODING  = alphaosf1_decoding, $
+                                ALPHAVMSD_DECODING  = alphavmsd_decoding, $
+                                ALPHAVMSG_DECODING  = alphavmsg_decoding, $
+                                DECSTATION_DECODING = decstation_decoding, $
+                                HOST_DECODING       = host_decoding, $
+                                HP_DECODING         = hp_decoding, $
+                                IBMPC_DECODING      = ibmpc_decoding, $
+                                IBMRS_DECODING      = ibmrs_decoding, $
+                                MAC_DECODING        = mac_decoding, $
+                                NETWORK_DECODING    = network_decoding, $
+                                NEXT_DECODING       = next_decoding, $
+                                SGI_DECODING        = sgi_decoding, $
+                                SUN_DECODING        = sun_decoding)
         endcase
     endcase
     
     ;Turn file validation back on (IDL v8.0+)
     if no_validate && MrCmpVersion('8.0' le 0) then cdf_set_validate, /YES
+
+    ;update the object fields
+    self.fileID   = fileID
+    self.filename = filename
     
     ;Set the compression?
     if n_elements(compression) gt 0 || n_elements(gzip_level) gt 0 then begin
         self -> SetCompression, compression, GZIP_LEVEL=gzip_level
     endif
-
-    ;update the object fields
-    self.fileID = fileID
-    self.filename = filename
 end
 
 
@@ -1746,18 +1985,6 @@ end
 
 
 ;+
-;   The purpose of this method is to print information about the file.
-;-
-pro MrCDF_File::PrintFileInfo
-    compile_opt strictarr
-    on_error, 2
-
-    outInfo = self -> _OverloadPrint()
-    print, outInfo
-end
-
-
-;+
 ;   A more robust method for obtaining variable data, when compared to the GetVarData
 ;   method.
 ;
@@ -1812,7 +2039,7 @@ end
 ;                               exists in the file. It is possible that this value does
 ;                               not exist.
 ;-
-function MrCDF_File::Read, varName, depend_0, depend_1, depend_2, depend_3, $
+function MrCDF_File::Read, varName, $
 ;INPUT
 COUNT=count, $
 INTERVAL=interval, $
@@ -1826,6 +2053,10 @@ STRING=string, $
 TIME=time, $
 ;OUTPUT
 DATATYPE=datatype, $
+DEPEND_0=depend_0, $
+DEPEND_1=depend_1, $
+DEPEND_2=depend_2, $
+DEPEND_3=depend_3, $
 FILLVALUE=fillvalue, $
 PADVALUE=padvalue
     compile_opt strictarr
@@ -1938,7 +2169,7 @@ PADVALUE=padvalue
         endif else begin
             tf_dep0 = varObj -> HasAttr('DEPEND_0', OBJECT=attrObj)
             if tf_dep0 then begin 
-                dep0VarName = attrObj -> GetValue()
+                dep0VarName = attrObj -> GetVarAttrValue(varName)
                 depend_0 = self -> GetVarData(dep0VarName, COUNT=count, INTERVAL=interval, $
                                               OFFSET=offset, REC_COUNT=rec_count, $
                                               REC_INTERVAL=rec_interval, REC_START=rec_start_out)
@@ -1948,7 +2179,7 @@ PADVALUE=padvalue
     
     ;DEPEND_1
     if arg_present(depend_1) then if varObj -> HasAttr('DEPEND_1', OBJECT=attrObj) then begin
-        dep1VarName = attrObj -> GetValue()
+        dep1VarName = attrObj -> GetVarAttrValue(varName)
         depend_1 = self -> GetVarData(dep1VarName, COUNT=count, INTERVAL=interval, $
                                       OFFSET=offset, REC_COUNT=rec_count, $
                                       REC_INTERVAL=rec_interval, REC_START=rec_start_out)
@@ -1956,7 +2187,7 @@ PADVALUE=padvalue
     
     ;DEPEND_2
     if arg_present(depend_2) then if varObj -> HasAttr('DEPEND_2', OBJECT=attrObj) then begin
-        dep2VarName = attrObj -> GetValue()
+        dep2VarName = attrObj -> GetVarAttrValue(varName)
         depend_2 = self -> GetVarData(dep2VarName, COUNT=count, INTERVAL=interval, $
                                       OFFSET=offset, REC_COUNT=rec_count, $
                                       REC_INTERVAL=rec_interval, REC_START=rec_start_out)
@@ -1964,7 +2195,7 @@ PADVALUE=padvalue
     
     ;DEPEND_3
     if arg_present(depend_3) then if varObj -> HasAttr('DEPEND_3', OBJECT=attrObj) then begin
-        dep3VarName = attrObj -> GetValue()
+        dep3VarName = attrObj -> GetVarAttrValue(varName)
         depend_3 = self -> GetVarData(dep3VarName, COUNT=count, INTERVAL=interval, $
                                       OFFSET=offset, REC_COUNT=rec_count, $
                                       REC_INTERVAL=rec_interval, REC_START=rec_start_out)
@@ -1979,32 +2210,24 @@ end
 ;   settings must be set before writing the data being compressed to the file. Individual
 ;   variables can be compressed differently from the rest of the CDF file.
 ;
-;   Note that these settings can be set when creating the file (see the Open method) or
-;   when adding data to a variable (see the WriteVarData method).
+; :Private:
 ;
 ; :Params:
-;       COMPRESSION:        in, optional, type=byte, default=0
+;       COMPRESSION:        in, optional, type=integer, default='None'
 ;                           Type of compression to be performed on single-file CDFs::
-;                               0 - No compression
-;                               1 - Run-Length Encoding
-;                               2 - Huffman
-;                               3 - Adaptive Huffman
-;                               5 - GZip (See the `GZIP_LEVEL` keyword)
+;                               0 or 'None'
+;                               1 or 'Run-Length Encoding'
+;                               2 or 'Huffman'
+;                               3 or 'Adaptive Huffman'
+;                               5 or 'GZip' (See the `GZIP_LEVEL` keyword)
 ;
 ; :Keywords:
-;       VARIABLE:           in, optional, type=string
-;                           Name of the variable whose compression settings are to
-;                               be set. If given, but `COMPRESSION` and
-;                               `GZIP_LEVEL` are undefined, then the variable
-;                               compression settings will be made equal to the current
-;                               file compression settings.
 ;       GZIP_LEVEL:         in, optional, type=byte, default=5
 ;                           Desired effort of GZip compression, from 1-9. Automatically
 ;                               sets `COMPRESSION`=5.
 ;-
 pro MrCDF_File::SetCompression, compression, $
-GZIP_LEVEL=gzip_level, $
-VARIABLE=variable
+GZIP_LEVEL=gzip_level
     compile_opt strictarr
 
     ;catch errors
@@ -2019,36 +2242,43 @@ VARIABLE=variable
     if self.writeable eq 0 then $
         message, 'File is not writable. Cannot set compression.'
 
-    ;Defaults/dependencies
-    if n_elements(compression) eq 0 then compression = 0
-    if n_elements(gzip_level)  gt 0 then compression = 5
-    
-    ;Variable Compression
-    ;   If a variable was given, but no compression settings, use the same settings
-    ;   as the file.
-    if n_elements(variable) gt 0 then begin
-        ;Make sure a name was given
-        if MrIsA(variable, 'STRING', /SCALAR) eq 0 then $
-            message, 'VARIABLE must be a scalar string representing the CDF variable name.'
-    
-        ;GZip? If no compression, use the current file compression settings.
-        if n_elements(gzip_level) gt 0 then begin
-            compression = 5
-        endif else if n_elements(var_compression) eq 0 then begin
-            self -> GetCompression, COMPRESSION=var_compression, GZIP_LEVEL=gzip_level
-            if var_compression eq 5 then var_gzip_level = gzip_level
-        endif
+    ;GZIP_LEVEL sets COMPRESSION to 'GZIP'
+    if n_elements(gzip_level)  gt 0 then compression = 'GZIP'
+    if n_elements(compression) eq 0 then compression = 'NONE'
 
-        ;Set the compression
-        cdf_compression, self.fileID, SET_VAR_GZIP_LEVEL=var_gzip_level, $
-                         SET_VAR_COMPRESSION=var_compression, VARIABLE=variable
+    ;Convert to a string if necessary
+    comp = strtrim(compression, 2)
+    case strupcase(comp) of
+        '0':                   comp = 0
+        '1':                   comp = 1
+        '2':                   comp = 2
+        '3':                   comp = 3
+        '5':                   comp = 5
+        'NONE':                comp = 0
+        'RUN-LENGTH ENCODING': comp = 1
+        'HUFFMAN':             comp = 2
+        'ADAPTIVE HUFFMAN':    comp = 3
+        'GZIP':                comp = 5
+        else: message, 'Invalid compression: "' + comp + '".'
+    endcase
     
-    ;File Compression
+    ;Default to GZIP_LEVEL=5
+    if comp eq 5 && n_elements(gzip_level) eq 0 then gzip_level = 5
+    
+    ;Set the file compression
+    cdf_compression, self.fileID, SET_COMPRESSION=comp, $
+                     SET_GZIP_LEVEL=gzip_level
+                     
+    ;Set the object property
+    self.compression = comp
+    
+    ;Reset the gzip_level pointer
+    if comp ne 5 then begin
+        ptr_free, self.gzip_level
+        self.gzip_level = ptr_new(/ALLOCATE_HEAP)
     endif else begin
-        cdf_compression, self.fileID, SET_COMPRESSION=compression, $
-                         SET_GZIP_LEVEL=gzip_level
+        *self.gzip_level = gzip_level
     endelse
-    
 end
 
 
@@ -2249,12 +2479,12 @@ GENTRYNUM=gEntryNum
         if keyword_set(create) $
             then self -> CreateAttr, gAttrName $
             else message, 'Global attribute "' + gAttrName + '" does not exist. ' + $
-                          'Set the CREATE keyword or use the WriteGlobalAttrDef method to create it.'
+                          'Set the CREATE keyword or use the CreateAttr method to create it.'
     endif
     
     ;Check inputs
-    nValues = n_elements(value)
-    if n_elements(cdf_epoch) eq 0 then cdf_epoch = 0
+    nValues   = n_elements(value)
+    cdf_epoch = keyword_set(cdf_epoch)
     
     ;gEntryNumber
     if n_elements(gEntryNum) eq 0 then begin
@@ -2359,9 +2589,20 @@ end
 ;                           Data to be written.
 ;
 ; :Keywords:
+;       COMPRESSION:        in, optional, type=string/integer, default='None'
+;                           Type of variable compression to perform. Options are::
+;                               0 or 'None'
+;                               1 or 'Run-Length Encoding'
+;                               2 or 'Huffman'
+;                               3 or 'Adaptive Huffman'
+;                               5 or 'GZIP'
 ;       COUNT:              in, optional, type=intarr, defualt=dimesnions of `DATA`.
 ;                           Vector containing the counts to be used when writing each
 ;                               value. Does not have to be the same size as `DIMENSION`.
+;       GZIP_LEVEL:         in, optional, type=integer, default=5
+;                           The desired effort for the GZIP compression. This effort must
+;                               be expressed as a scalar in the range (1-9). If set, then
+;                               `COMPRESSION` is set to 5 automatically.
 ;       INTERVAL:           in, optional, type=intarr, default=1 for each dimension
 ;                           Interval between values in each dimension.
 ;       OFFSET:             in, optional, type=intarr, default=0 for each dimension
@@ -2382,9 +2623,11 @@ OFFSET=offset, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
 ;Create Variable?
+COMPRESSION=compression, $
 CREATE=create, $
 CDF_TYPE=cdf_type, $
 DIMS=dims, $
+GZIP_LEVEL=gzip_level, $
 REC_NOVARY=rec_novary, $
 ZVARIABLE=zvariable
     compile_opt strictarr
@@ -2435,13 +2678,14 @@ ZVARIABLE=zvariable
         
         ;Get the data type
         if n_elements(cdf_type) eq 0 then begin
-            cdf_type = size(data, /TNAME)
-            cdf_type = cdf_castdatatype(cdf_type, /TNAME)
+            idl_type = size(data, /TNAME)
+            cdf_type = MrCDF_CastDataType(idl_type, /TNAME)
         endif
 
         ;Create the variable
         self -> CreateVar, variable, cdf_type, dimVary, ALLOCATERECS=allocaterecs, $
-                           DIMENSIONS=dims, REC_NOVARY=rec_novary
+                           COMPRESSION=compression, DIMENSIONS=dims, $
+                           GZIP_LEVEL=gzip_level, REC_NOVARY=rec_novary
     endif
     
 ;-----------------------------------------------------
@@ -2488,18 +2732,21 @@ pro MrCDF_File::cleanup
     ;Error handling
     catch, the_error
     if the_error ne 0 then begin
-        catch, /cancel
+        catch, /CANCEL
         void = cgErrorMSG()
         return
     endif
-
-    ;Close the CDF file
+    
+    ;Close the file
     self -> Close
     
     ;Destoy objects
     obj_destroy, self.attrs
     obj_destroy, self.rVars
     obj_destroy, self.zVars
+    
+    ;Free heap variables
+    ptr_free, self.gzip_level
     
     ;Superclasses
     self -> IDL_Object::Cleanup
@@ -2564,6 +2811,7 @@ _REF_EXTRA=extra
     self.attrs = obj_new('MrCDF_Container')
     self.rVars = obj_new('MrCDF_Container')
     self.zVars = obj_new('MrCDF_Container')
+    self.gzip_level = ptr_new(/ALLOCATE_HEAP)
 
     ;Open the file and load the meta-data
     self -> open, filename, $
@@ -2596,6 +2844,7 @@ end
 ;       ATTRS:              Container of attribute objects.
 ;       DECODING:           Decoding type for the CDF file.
 ;       ENCODING:           Encoding type for the CDF file.
+;       COMPRESSION:        Type of file compression.
 ;       FILENAME:           The name of the CDF file begin read.
 ;       FILEID:             The CDF ID number of the file being read.
 ;       ISPARSED:           Indicates that the file has been parsed.
@@ -2610,16 +2859,18 @@ pro MrCDF_File__define, class
     
     define = { MrCDF_File, $
                inherits IDL_Object, $
-               decoding:  '', $
-               encoding:  '', $
-               filename:  '', $
-               fileID:    0L, $
-               isParsed:  0B, $
-               majority:  '', $
-               quiet:     0B, $
-               attrs:     obj_new(), $
-               rVars:     obj_new(), $
-               zVars:     obj_new(), $
-               writeable: 0B $
+               compression: 0S, $
+               decoding:    '', $
+               encoding:    '', $
+               filename:    '', $
+               fileID:      0L, $
+               isParsed:    0B, $
+               gzip_level:  ptr_new(), $
+               majority:    '', $
+               quiet:       0B, $
+               attrs:       obj_new(), $
+               rVars:       obj_new(), $
+               zVars:       obj_new(), $
+               writeable:   0B $
              }
 end

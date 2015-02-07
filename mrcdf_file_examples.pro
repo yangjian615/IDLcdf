@@ -47,26 +47,31 @@
 ; :History:
 ;   Modification History::
 ;       2014/03/07  -   Written by Matthew Argall
+;       2015/02/06  -   Copy file contents to another CDF file.
 ;-
-pro MrCDF_File_Examples
+pro MrCDF_File_Examples, directory
     compile_opt strictarr
     
     ;Error handling
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        obj_destroy, fileObj
+        if obj_valid(fileObj) then obj_destroy, fileObj
+        if obj_valid(srcObj)  then obj_destroy, srcObj
+        if obj_valid(destObj) then obj_destroy, destObj
+        if obj_valid(copyObj) then obj_destroy, copyObj
         void = cgErrorMsg()
         return
     endif
     
-    ;Initial object definitions -- used for proper cleanup
-    fileObj = obj_new()
-
+    ;Save to the current directory
+    if n_elements(directory) eq 0 then cd, CURRENT=directory
+    filename = filepath('MrCDF_Example.cdf', ROOT_DIR=directory)
+    
 ;-----------------------------------------------------
 ; Create a New File for Writing \\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-    fileObj = obj_new('MrCDF_File', '/Users/argall/Desktop/cdf_example.cdf', $
+    fileObj = obj_new('MrCDF_File', filename, $
                       /CREATE, /CLOBBER)
     if obj_valid(fileObj) eq 0 then $
         message, 'Unable to create CDF file.'
@@ -140,9 +145,9 @@ pro MrCDF_File_Examples
     ; variable attribute to point to a time array with 24 records, we can associate one
     ; frame with each of the 24 times.
     ;
-    fileObj -> CreateVar, 'M51_Whilrpool_Galaxy', 'CDF_INT1', ['VARY', 'VARY'], $
-                            DIMENSIONS=[dims1[0], dims1[1]], /REC_NOVARY
     fileObj -> CreateVar, 'Time', 'CDF_EPOCH', 'NOVARY', ALLOCATERECS=24
+    fileObj -> CreateVar, 'M51_Whilrpool_Galaxy', 'CDF_INT1', ['VARY', 'VARY'], $
+                          DIMENSIONS=[dims1[0], dims1[1]], /REC_NOVARY
 
     ;Write the data. This generates the following warning:
     ;   % CDF_VARPUT: Function completed but: VIRTUAL_RECORD_DATA: One or more of the records are virtual.
@@ -172,15 +177,66 @@ pro MrCDF_File_Examples
     ;Create and write in one step
     fileObj -> WriteVarAttr, 'Blood_Study', 'Frame Order', [0,4,2,3,10,15,13,12,6,9,1,11,7,5,8], /CREATE
     fileObj -> WriteVarAttr, 'M51_Whilrpool_Galaxy', 'Frame Order', indgen(24)
-
+    
+;-----------------------------------------------------
+; Close the File to Finish Writing \\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     ;Destroy the object (writes file to disk and closes the file).
+    fileObj -> Close
     obj_destroy, fileObj
     
+    ;File written
+    message, 'File written to: "' + filename + '".', /INFORMATIONAL
+    
+;-----------------------------------------------------
+; Open the File and Display Contents \\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     ;Read the data
-    fileObj = obj_new('MrCDF_File', '/Users/argall/Desktop/cdf_example.cdf')
-    fileObj -> PrintFileInfo
-    data1 = fileObj -> Read('M51_Whilrpool_Galaxy')
-    data2 = fileObj -> Read('Blood_Study')
+    fileObj = obj_new('MrCDF_File', filename)
+    fileObj -> FilePrint
+    data1   = fileObj -> Read('M51_Whilrpool_Galaxy')
+    data2   = fileObj -> Read('Blood_Study')
     help, data1, data2
     obj_destroy, fileObj
+    
+;-----------------------------------------------------
+; Copy to New File \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+
+    ;Open the old file
+    srcObj  = obj_new('MrCDF_File', filename)
+    
+    ;Create a new cdf
+    destFile = filepath('MrCDF_Example_Copy.cdf', ROOT_DIR=directory)
+    destObj  = obj_new('MrCDF_File', destFile, /CREATE, /CLOBBER)
+    
+    ;Get all of the global attribute names and copy them to the destination
+    ;   -   The global attribute will be created automatically, if it does not exist.
+    gAttrNames = srcObj -> GetAttrNames(COUNT=nGAttrs)
+    for i = 0, nGAttrs - 1 do srcObj -> CopyGlobalAttrTo, gAttrNames[i], destObj
+    
+    ;Get all of the variable attribute names and copy them to the destination
+    vAttrNames = srcObj -> GetAttrNames(COUNT=nVarAttrs, /VARIABLE_SCOPE)
+    for i = 0, nVarAttrs - 1 do srcObj -> CopyVarAttrTo, vAttrNames[i], destObj
+    
+    ;Get all of the variable names and copy them to the destination object
+    ;   - This will copy variable attributes automatically.
+    ;   - Variable attributes that do not exist in the destination are skipped.
+    varnames = srcObj -> GetVarNames(COUNT=nVars)
+    for i = 0, nVars-1 do srcObj -> CopyVariableTo, varnames[i], destObj
+    
+    ;Close the source file
+    obj_destroy, srcObj
+    obj_destroy, destObj
+    
+;-----------------------------------------------------
+; Open the Destination File and Display Contents \\\\\
+;-----------------------------------------------------
+    ;Read the data
+    copyObj = obj_new('MrCDF_File', destFile)
+    copyObj -> FilePrint
+    data1   = copyObj -> Read('M51_Whilrpool_Galaxy')
+    data2   = copyObj -> Read('Blood_Study')
+    help, data1, data2
+    obj_destroy, copyObj
 end

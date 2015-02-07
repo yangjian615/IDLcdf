@@ -68,84 +68,73 @@
 ;       2014/05/08  -   Added the Quiet property to suppress warnings from the CDF DLM. - MRA
 ;       2014/05/09  -   Added the _OverloadHelp method. - MRA
 ;       2014/05/17  -   Added the ToStruct method. - MRA
+;       2014/01/30  -   Added the _OverloadBracketsRightSide method. - MRA
+;       2015/02/06  -   _OverloadPrint/Help provide concise, well formatted output.
+;                           Variable compression now possible. - MRA
 ;-
 ;*****************************************************************************************
 ;+
-;   Provide information when the PRINT procedure is called.
+;   Obtain a variable's object reference
+;
+; :Params:
+;       ISRANGE:            in, required, type=intarr
+;                           A vector that has one element for each Subscript argument
+;                               supplied by the user; each element contains a zero if the
+;                               corresponding input argument was a scalar index value or
+;                               array of indices, or a one if the corresponding input
+;                               argument was a subscript range.
+;       SUBSCRIPT1:         in, required, type=string/integer
+;                           If a string is given, it is the name of the variable object whose
+;                               for which the object reference is to be retrieved. An
+;                               integer value of 0 will return the file's object reference.
+;
+; :Keywords:
+;       DATASET:            in, optional, private, type=MrArray object
+;                           Used internally on a recursive call if `SUBSCRIPT1` is a string.
+;
+; :Returns:
+;       RESULT:             in, required, type=numeric array
+;                           The subarray accessed by the input parameters.
 ;-
-function MrCDF_Variable::_OverloadPrint
+function MrCDF_Variable::_OverloadBracketsRightSide, isRange, subscript1
+    compile_opt strictarr
     
     ;Error handling
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
         void = cgErrorMsg()
-        return, ''
+        return, -1
     endif
     
-    nameStr   = string('Name:',      self.name,      FORMAT='(a-23, a0)')
-    numberStr = string('Number:',    self.number,    FORMAT='(a-20, i0)')
-    zVarStr   = string('ZVariable:', self.zvariable, FORMAT='(a-20, i0)')
-    maxRecStr = string('MaxRec:',    self.maxRec,    FORMAT='(a-20, i0)')
-    recVarStr = string('RecVar:',    self.RecVar,    FORMAT='(a-20, a0)')
+    ;Pick the proper data set to alter
+    if n_elements(subscript1) ne 1 then $
+        message, 'The first subscript must be a scalar.'
+    
+    ;Only one subscript can be given    
+    nSubs = n_elements(isRange)
+    if nSubs ne 1 then message, 'Only one subscript is accepted.'
 
-    dimStr    = string('Dim:',    '[' + strjoin(string(*self.dim,    FORMAT='(i0)'), ', ') + ']', FORMAT='(a-20, a0)')
-    dimVarStr = string('DimVar:', '[' + strjoin(string(*self.dimvar, FORMAT='(i1)'), ', ') + ']', FORMAT='(a-20, a0)')
+    ;Attribute name.    
+    if MrIsA(subscript1, 'STRING') then begin
+        tf_has = self -> HasAttr(subscript1, OBJECT=theObj)
+        if tf_has eq 0 then message, 'Variable attribute "' + subscript1 + '" not found.'
     
-    ;Append all of the strings together. Make a column so each is
-    ;printed on its own line.
-    output = [[nameStr], $
-              [numberStr], $
-              [zVarStr], $
-              [MaxRecStr], $
-              [recVarStr], $
-              [dimStr], $
-              [dimVarStr]]
-    
-    ;Variable Attributes
-    varAttrStr = 'VARATTRS:'
-    allVarAttrs = self.attributes -> Get(/ALL, COUNT=varAttrCount)
-    for i = 0, varAttrCount-1 do begin
-        thisVarAttr = allVarAttrs[i]
-        attrName = thisVarAttr -> GetName()
-        attrValue = thisVarAttr -> GetVarAttrValue(self.name, CDF_TYPE=cdf_type)
+    ;Attribute indices not allowed because 0 must return SELF otherwise object array
+    ;indexing will not work.
+    endif else if MrIsA(subscript1, /INTEGER) then begin
+        ;If the scalar index 0 was given, return the SELF reference
+        if subscript1 ne 0 then message, '0 is the only integer 0 is accepted as a subscript.'
+        theObj = self
         
-        attrNameStr = string('Name:', attrName, FORMAT='(a-17, a0)')
-        attrTypeStr = string('CDF Type', cdf_type, FORMAT='(a-14, a0)')
-        case 1 of
-            MrIsA(attrValue, 'STRING'): begin
-                if n_elements(attrValue) eq 1 $
-                    then attrValueStr = string('Value', '"' + attrValue + '"', FORMAT='(a-14, a0)') $
-                    else attrValueStr = string('Value', '["' + strjoin(attrValue, '", "') + '"]', FORMAT='(a-14, a0)')
-            endcase
-            
-            MrIsA(attrValue, 'INTEGER'): begin
-                if n_elements(attrValue) eq 1 $
-                    then attrValueStr = string('Value', string(attrValue, FORMAT='(i0)'), FORMAT='(a-14, a0)') $
-                    else attrValueStr = string('Value', '[' + strjoin(string(attrValue, FORMAT='(i0)'), ', ') + ']', FORMAT='(a-14, a0)')
-            endcase
-            
-            else: begin
-                if n_elements(attrValue) eq 1 $
-                    then attrValueStr = string('Value', string(attrValue, FORMAT='(f0)'), FORMAT='(a-14, a0)') $
-                    else attrValueStr = string('Value', '[' + strjoin(string(attrValue, FORMAT='(f0)'), ', ') + ']', FORMAT='(a-14, a0)')
-            endcase
-        endcase
-        
-        varAttrStr = [[varAttrStr], $
-                      ['   ' + attrNameStr], $
-                      ['      ' + attrTypeStr], $
-                      ['      ' + attrValueStr]]
-    endfor
+    endif else begin
+        message, 'First subscript must be a string or 0.'
+    endelse
     
-    ;Join the variable with its attributes 
-    output = [[output], [varAttrStr]]
-    
-    ;Offset everything form the variable name
-    output[0,1:*] = '   ' + output[0,1:*]
-    
-    return, output
+    ;Return the variable object?
+    return, theObj
 end
+
 
 ;+
 ;   Provide information when the PRINT procedure is called.
@@ -160,10 +149,52 @@ function MrCDF_Variable::_OverloadHelp, varname
         return, ''
     endif
     
+    class  = obj_class(self)
+    heapID = obj_valid(self, /GET_HEAP_IDENTIFIER)
+    selfStr = class + '   <' + strtrim(heapID, 2) + '>'
+    
     ;Dimensions
-    if n_elements(*self.dim) eq 1 $
-        then dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']' $
-        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']'
+    case n_elements(*self.dim) of
+        0:    dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']'
+        1:    dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']'
+        else: dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
+    endcase
+    
+    ;Variable type
+    var_type = self.zvariable ? 'zVar' : 'rVar'
+    
+    ;Help string
+    outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
+                    FORMAT='(i3, 2x, a-20, 2x, a4, 2x, a14, 2x, a0)')
+                    
+    ;Get compression information
+    self -> GetProperty, COMPRESSION=compression, GZIP_LEVEL=gzip_level
+    compStr = '  Compression: ' + compression
+    if compression eq 'GZIP' then compStr += ' at level ' + strtrim(gzip_level, 2)
+    
+    return, [[selfStr], [outStr], [compStr]]
+end
+
+
+;+
+;   Provide information when the PRINT procedure is called.
+;-
+function MrCDF_Variable::_OverloadPrint
+    
+    ;Error handling
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return, ''
+    endif
+    
+    ;Dimensions
+    case n_elements(*self.dim) of
+        0:    dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']'
+        1:    dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']'
+        else: dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
+    endcase
     
     ;Variable type
     var_type = self.zvariable ? 'zVar' : 'rVar'
@@ -173,9 +204,9 @@ function MrCDF_Variable::_OverloadHelp, varname
                     FORMAT='(i3, 2x, a-20, 2x, a4, 2x, a14, 2x, a0)')
 
     ;Allocate memory for the attribute help string    
-    nAttrs = self.attributes -> Count()
+    nAttrs      = self.attributes -> Count()
     attrHelp    = strarr(1, nAttrs+1)
-    attrHelp[0] = '  ATTRIBUTES:'
+    attrHelp[0] = 'ATTRIBUTES:'
     
     ;Get help from the attributes.
     allAttrs = self.attributes -> Get(/ALL)
@@ -202,7 +233,8 @@ end
 ;-
 function MrCDF_Variable::GetAttrNames, $
 COUNT=count, $
-ERROR=the_error
+ERROR=the_error, $
+SHOW=show
     compile_opt strictarr
     
     ;Error handling
@@ -224,6 +256,9 @@ ERROR=the_error
     
     ;Return a scalar
     if count eq 1 then attrNames = attrNames[0]
+    
+    ;Print the names?
+    if keyword_set(show) then print, transpose(attrNames)
     
     return, attrNames
 end
@@ -443,14 +478,17 @@ end
 ;                       Dimension sizes of the data.
 ;-
 pro MrCDF_Variable::GetProperty, $
+DATATYPE=cdf_type, $
+COMPRESSION=compression, $
+DIMENSIONS=dimensions, $
+DIMVAR=dimvar, $
+GZIP_LEVEL=gzip_level, $
+MAXREC=maxrec, $
 NAME=name, $
 NUMBER=number, $
-CDF_TYPE=cdf_type, $
 NELEMENTS=nElements, $
 RECVAR=recvar, $
-DIMVAR=dimvar, $
-DIMENSIONS=dimensions, $
-MAXREC=maxrec
+ZVARIABLE=zvariable
     compile_opt strictarr
     on_error, 2
     
@@ -458,11 +496,22 @@ MAXREC=maxrec
     if arg_present(cdf_type)   then cdf_type   =  self.cdf_type
     if arg_present(dimensions) then dimensions = *self.dim
     if arg_present(dimvar)     then dimvar     = *self.dimvar
+    if arg_present(gzip_level) then gzip_level = *self.gzip_level
     if arg_present(maxrec)     then maxrec     =  self.maxrec
     if arg_present(name)       then name       =  self.name
     if arg_present(nelements)  then nelements  =  self.nelements
     if arg_present(number)     then number     =  self.number
     if arg_present(recvar)     then recvar     =  self.recvar
+    if arg_present(zvariable)  then zvariable  =  self.zvariable
+    if arg_present(compression) then begin
+        case self.compression of
+            0: compression = 'None'
+            1: compression = 'Run-Length Encoding'
+            2: compression = 'Huffman'
+            3: compression = 'Adaptive Huffman'
+            5: compression = 'GZIP'
+        endcase
+    endif
 end
 
 
@@ -493,13 +542,21 @@ pro MrCDF_Variable::Parse
     self.cdf_type  = varinq.datatype
     self.nelements = varinq.numelem
     self.recvar    = varinq.recvar
-    self.dimvar    = ptr_new(varinq.dimvar)
-    self.dim       = ptr_new(varinq.dim)
+    if ~(n_elements(varinq.dim) eq 1 && varinq.dim eq 0) then begin
+        *self.dimvar = varinq.dimvar
+        *self.dim    = varinq.dim
+    endif
 
     ;More info
     cdf_control, parentID, VARIABLE=self.name, ZVARIABLE=self.zvariable, GET_VAR_INFO=varinfo
     self.maxrec = varinfo.maxrec
     if max(tag_names(varinfo) eq 'PADVALUE') then self.padvalue = ptr_new(varinfo.padvalue)
+    
+    ;Compression
+    cdf_compression, parentID, VARIABLE=self.name, ZVARIABLE=self.zvariable, $
+                     GET_VAR_COMPRESSION=compression, GET_VAR_GZIP_LEVEL=gzip_level
+    self.compression = compression
+    if compression eq 5 then *self.gzip_level = gzip_level
 
 ;---------------------------------------------------------------------
 ; Variable Attribute Info ////////////////////////////////////////////
@@ -511,7 +568,7 @@ pro MrCDF_Variable::Parse
 
     ;Quiet
     thisQuiet = !quiet
-    !quiet = self.quiet
+    !quiet    = self.quiet
 
     ;Variable attributes *should* be /after/ global attributes, but I have seen
     ;a number of files where this is not the case. Thus, check each attribute.
@@ -535,6 +592,87 @@ pro MrCDF_Variable::Parse
     
     ;Unquiet
     !quiet = thisQuiet
+end
+
+
+;+
+;   Set the compression type for the CDF variable. The file must be writable and compression
+;   settings must be set before allocating or writing variable data. Individual
+;   variables can be compressed differently from the rest of the CDF file.
+;
+; :Private:
+;
+; :Params:
+;       COMPRESSION:        in, optional, type=integer, default='None'
+;                           Type of compression to be performed on single-file CDFs::
+;                               0 or 'None'
+;                               1 or 'Run-Length Encoding'
+;                               2 or 'Huffman'
+;                               3 or 'Adaptive Huffman'
+;                               5 or 'GZip' (See the `GZIP_LEVEL` keyword)
+;
+; :Keywords:
+;       GZIP_LEVEL:         in, optional, type=byte, default=5
+;                           Desired effort of GZip compression, from 1-9. Automatically
+;                               sets `COMPRESSION`=5.
+;-
+pro MrCDF_Variable::SetCompression, compression, $
+GZIP_LEVEL=gzip_level
+    compile_opt strictarr
+
+    ;catch errors
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /cancel
+        void = cgErrorMsg()
+        return
+    endif
+    
+    ;Check if the file is writable
+    if self.writeable eq 0 then $
+        message, 'File is not writable. Cannot set compression.'
+
+    ;GZIP_LEVEL sets COMPRESSION to 'GZIP'
+    if n_elements(gzip_level)  gt 0 then compression = 'GZIP'
+    if n_elements(compression) eq 0 then compression = 'NONE'
+
+    ;Convert to a string if necessary
+    comp = strtrim(compression, 2)
+    case strupcase(comp) of
+        '0':                   comp = 0
+        '1':                   comp = 1
+        '2':                   comp = 2
+        '3':                   comp = 3
+        '5':                   comp = 5
+        'NONE':                comp = 0
+        'RUN-LENGTH ENCODING': comp = 1
+        'HUFFMAN':             comp = 2
+        'ADAPTIVE HUFFMAN':    comp = 3
+        'GZIP':                comp = 5
+        else: message, 'Invalid compression: "' + comp + '".'
+    endcase
+    
+    ;Default to GZIP_LEVEL=5
+    if comp eq 5 && n_elements(gzip_level) eq 0 then gzip_level = 5
+    
+    ;Set the file compression
+    fileID = self.parent -> GetFileID()
+    cdf_compression, fileID, $
+                     VARIABLE        = self.name, $
+                     ZVARIABLE       = self.zvariable, $
+                     SET_COMPRESSION = comp, $
+                     SET_GZIP_LEVEL  = gzip_level
+                     
+    ;Set the object property
+    self.compression = comp
+    
+    ;Reset the gzip_level pointer
+    if comp ne 5 then begin
+        ptr_free, self.gzip_level
+        self.gzip_level = ptr_new(/ALLOCATE_HEAP)
+    endif else begin
+        *self.gzip_level = gzip_level
+    endelse
 end
 
 
@@ -688,6 +826,7 @@ pro MrCDF_Variable::cleanup
     ;Free pointers
     ptr_free, self.dimvar
     ptr_free, self.dim
+    ptr_free, self.gzip_level
     ptr_free, self.padvalue
 end
 
@@ -728,7 +867,11 @@ QUIET=quiet
     
     ;Allocate Pointers
     self.attributes = obj_new('MrCDF_Container')
-    self.quiet = n_elements(quiet) eq 0 ? 1 : keyword_set(quiet)
+    self.dimvar     = ptr_new(/ALLOCATE_HEAP)
+    self.dim        = ptr_new(/ALLOCATE_HEAP)
+    self.gzip_level = ptr_new(/ALLOCATE_HEAP)
+    self.padvalue   = ptr_new(/ALLOCATE_HEAP)
+    self.quiet      = n_elements(quiet) eq 0 ? 1 : keyword_set(quiet)
     
     ;Get the variable number and Z-Variable state
     parentID = parent -> GetFileID()
@@ -759,6 +902,7 @@ end
 ; :Fields:
 ;       ATTRIBUTES:     CDF_Container object for holding variable attributes.
 ;       CDF_TYPE:       CDF datatype.
+;       COMPRESSION:    Type of variable compression.
 ;       DIMVAR:         Dimensional variance of the CDF variable data.
 ;       MAXREC:         Maximum number of records associated with the data (0-based).
 ;       NAME:           CDF variable name.
@@ -775,11 +919,13 @@ pro MrCDF_Variable__define
     
     define = { MrCDF_Variable, $
                inherits IDL_Object, $
-               parent:     obj_new(), $
-               attributes: obj_new(), $
-               name:       '', $
-               number:     0L, $
-               quiet:      0B, $
+               parent:      obj_new(), $
+               attributes:  obj_new(), $
+               name:        '', $
+               number:      0L, $
+               quiet:       0B, $
+               compression: 0S, $
+               gzip_level:  ptr_new(), $
                
                ;VAR_INQ
                cdf_type:   '', $
