@@ -77,6 +77,7 @@
 ;   Uses the following external programs::
 ;       MrTimeParser.pro
 ;       MrCDF_Epoch_Type.pro
+;       MrCDF_Epoch_Parse.pro (for example)
 ;
 ; :Author:
 ;   Matthew Argall::

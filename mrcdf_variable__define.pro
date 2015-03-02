@@ -165,7 +165,7 @@ function MrCDF_Variable::_OverloadHelp, varname
     
     ;Help string
     outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
-                    FORMAT='(i3, 2x, a-20, 2x, a4, 2x, a14, 2x, a0)')
+                    FORMAT='(i3, 2x, a-0, 2x, a4, 2x, a14, 2x, a0)')
                     
     ;Get compression information
     self -> GetProperty, COMPRESSION=compression, GZIP_LEVEL=gzip_level
@@ -275,12 +275,21 @@ end
 ; :Keywords:
 ;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `ATTRVALUE`.
+;       FOLLOW_PTR:         in, optional, type=boolean, default=0
+;                           If `ATTRVALUE` points to a variable, then follow the pointer,
+;                               read the variable's data, and return it.
+;       PTR_VALUE:          out, optional, type=string, default=''
+;                           If `FOLLOW_PTR` is set, this will return the name of the
+;                               variable that serves as the pointer. If `ATTRVALUE` is
+;                               not a pointer, then the empty string is returned.
 ;
 ; :Returns:
 ;       ATTRVALUE:          Value of `ATTRIBUTE`.
 ;-
 function MrCDF_Variable::GetAttrValue, attribute, $
-CDF_TYPE=cdf_type
+CDF_TYPE=cdf_type, $
+FOLLOW_PTR=follow_ptr, $
+PTR_VALUE=ptr_value
     compile_opt strictarr
     
     ;Error handling
@@ -305,6 +314,14 @@ CDF_TYPE=cdf_type
     
     ;Get the value and data type.
     attrValue = attObj -> GetVarAttrValue(self.name, CDF_TYPE=cdf_type)
+    
+    ;Pointer to another variable
+    if keyword_set(follow_ptr) && MrIsA(attrValue, /SCALAR, 'STRING') && attrValue ne self.name then begin
+        ptr_value = attrValue
+        attrValue = self.parent -> Read(ptr_value, CDF_TYPE=cdf_type)
+    endif else begin
+        ptr_value = ''
+    endelse
     
     return, attrValue
 end
@@ -365,7 +382,7 @@ end
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
-;       DATATYPE:           out, optional, type=string
+;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of the variable being read. Possibilities are:
 ;                               'CDF_EPOCH', 'CDF_BYTE', 'CDF_CHAR', 'CDF_DOUBLE', 
 ;                               'CDF_REAL8', 'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4',
@@ -462,7 +479,7 @@ end
 ;                       CDF variable name.
 ;       NUMBER:         out, optional, type=integer
 ;                       CDF variable number.
-;       DATATYPE:       out, optional, type=string
+;       CDF_TYPE:       out, optional, type=string
 ;                       CDF data type. Posibilities are: 'CDF_BYTE',
 ;                           'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
 ;                           'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
@@ -478,7 +495,7 @@ end
 ;                       Dimension sizes of the data.
 ;-
 pro MrCDF_Variable::GetProperty, $
-DATATYPE=cdf_type, $
+CDF_TYPE=cdf_type, $
 COMPRESSION=compression, $
 DIMENSIONS=dimensions, $
 DIMVAR=dimvar, $
@@ -629,7 +646,8 @@ GZIP_LEVEL=gzip_level
     endif
     
     ;Check if the file is writable
-    if self.writeable eq 0 then $
+    self.parent -> GetProperty, WRITEABLE=writeable
+    if writeable eq 0 then $
         message, 'File is not writable. Cannot set compression.'
 
     ;GZIP_LEVEL sets COMPRESSION to 'GZIP'
@@ -730,7 +748,7 @@ READ_DATA=read_data
     var_struct = {_NAME:         self.name, $
                   _DATA:              data, $
                   _TYPE:              'VARIABLE', $
-                  _DATATYPE:     self.cdf_type, $
+                  _CDF_TYPE:     self.cdf_type, $
                   _NELEMENTS:    self.maxrec + 1, $
                   _NDIMENSIONS:       nDimensions, $
                   _DIMENSIONS:  *self.dim, $

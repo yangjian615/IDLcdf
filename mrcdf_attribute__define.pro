@@ -49,7 +49,6 @@
 ; :Uses:
 ;   Uses the following external programs::
 ;       cgErrorMsg.pro
-;       LinkedList__Define (Coyote Graphics)
 ;
 ; :Author:
 ;   Matthew Argall::
@@ -76,7 +75,7 @@
 ;       2015/02/06  -   Restructured the _OverloadPrint/Help methods to provide more
 ;                           concise information. Can now retrieve the variable attribute
 ;                           entry mask. Cleared up confusions between numGEntries and
-;                           maxGEntries. DATATYPE is now used instead of CDF_TYPE. - MRA
+;                           maxGEntries. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -93,7 +92,7 @@ function MrCDF_Attribute::_OverloadPrint
     endif
     
     ;Get the entry information
-    entryMask = self -> GetEntryMask(DATATYPE=datatype, MAXGENTRY=maxGEntry, $
+    entryMask = self -> GetEntryMask(CDF_TYPE=cdf_type, MAXGENTRY=maxGEntry, $
                                      NUMGENTRIES=numGEntries, ERROR=the_error, $
                                      MAXRENTRY=maxREntry, MAXZENTRY=maxZEntry, $
                                      NUMRENTRIES=numREntries, NUMZENTRIES=numZEntries)
@@ -108,7 +107,7 @@ function MrCDF_Attribute::_OverloadPrint
     numREntryStr = string('Num R-Entries:', numREntries, FORMAT='(a-20, i0)')
     maxZEntryStr = string('Max Z-Entry:',   maxZEntry,   FORMAT='(a-20, i0)')
     numZEntryStr = string('Num Z-Entries:', numZEntries, FORMAT='(a-20, i0)')
-    typeStr      = string('CDF Type:', "['" + strjoin(datatype, "', '") + "']", FORMAT='(a-20, a0)')
+    typeStr      = string('CDF Type:', "['" + strjoin(cdf_type, "', '") + "']", FORMAT='(a-20, a0)')
     maskStr      = string('Entry Mask:', '[' + strjoin(string(entryMask, FORMAT='(i1)'), ', ') + ']', FORMAT='(a-20, a0)')
     
     ;Append all of the strings together. Make a column so each is
@@ -187,7 +186,7 @@ end
 ;                               contain values. -1 is returned if no global entries exits.
 ;-
 function MrCDF_Attribute::GetEntryMask, $
-DATATYPE=datatype, $
+CDF_TYPE=cdf_type, $
 ERROR=the_error, $
 MAXGENTRY=maxGEntry, $
 MAXRENTRY=maxREntry, $
@@ -207,7 +206,7 @@ NUMZENTRIES=numZEntries
     
     ;Get the CDF file ID
     fileID    = self.parent -> GetFileID()
-    doCDFType = arg_present(datatype)
+    doCDFType = arg_present(cdf_type)
     
     ;Total number of global attributes
     self.parent -> GetProperty, NGATTRS=nGAttrs, NVATTRS=nVAttrs, NRVARS=nRVars, NZVARS=nZVars, NVARS=nVars
@@ -220,7 +219,7 @@ NUMZENTRIES=numZEntries
     maxGEntry   = attr_info.maxGEntry
     maxREntry   = attr_info.maxREntry
     maxZEntry   = attr_info.maxZEntry
-    datatype    = ''
+    cdf_type    = ''
 
 ;-----------------------------------------------------
 ; Global Attribute \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -236,7 +235,7 @@ NUMZENTRIES=numZEntries
     
         ;No entries?
         if numGEntries eq 0 then return, -1
-        if doCDFtype then datatype = strarr(nEntries)
+        if doCDFtype then cdf_type = strarr(nEntries)
         
         ;Build entry mask and count hits
         entryMask  = bytarr(nEntries)
@@ -250,7 +249,7 @@ NUMZENTRIES=numZEntries
             ;Get the CDF type?
             if doCDFType then begin
                 cdf_attget, fileID, self.name, thisGEntry, value, CDF_TYPE=type
-                datatype[gAttrCount]  = type
+                cdf_type[gAttrCount]  = type
             endif
 
             ;Unmask the value
@@ -275,7 +274,7 @@ NUMZENTRIES=numZEntries
     
         ;No variables associated with this attribute
         if numVEntries eq 0 then return, -1
-        if doCDFtype then datatype = strarr(numVEntries)
+        if doCDFtype then cdf_type = strarr(numVEntries)
     
         ;Build the mask
         entryMask  = bytarr(nVars)
@@ -289,7 +288,7 @@ NUMZENTRIES=numZEntries
             ;Get the CDF type?
             if doCDFType then begin
                 cdf_attget, fileID, self.name, iRVar, value, CDF_TYPE=type
-                datatype[vAttrCount] = type
+                cdf_type[vAttrCount] = type
             endif
 
             ;Unmask the value
@@ -305,7 +304,7 @@ NUMZENTRIES=numZEntries
             ;Get the CDF type?
             if doCDFType then begin
                 cdf_attget, fileID, self.name, iZVar, value, CDF_TYPE=type, /ZVARIABLE
-                datatype[vAttrCount] = type
+                cdf_type[vAttrCount] = type
             endif
 
             ;Unmask the value
@@ -360,7 +359,7 @@ end
 ;                               be stored at discontiguous entry numbers.
 ;
 ; :Keywords:
-;       DATATYPE:           out, optional, type=string
+;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `ATTRVALUE`. Not all attribute values need
 ;                               to be of the same datatype.
 ;       COUNT:              out, optional, type=integer
@@ -384,7 +383,7 @@ end
 ;                               will be returned instead of an array.
 ;-
 function MrCDF_Attribute::GetGlobalAttrValue, entryNum, $
-DATATYPE=datatype, $
+CDF_TYPE=cdf_type, $
 COUNT=nEntries, $
 ERROR=the_error, $
 ENTRYMASK=entryMask, $
@@ -402,13 +401,13 @@ ZVARIABLE=zvariable
     ;Get the CDF file ID
     fileID = self.parent -> GetFileID()
     nEntryNum = n_elements(entryNum)
-    datatype  = ''
+    cdf_type  = ''
 
 ;-----------------------------------------------------
 ; Specific Entries \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     if nEntryNum gt 0 then begin
-        datatype   = strarr(nEntryNum)
+        cdf_type   = strarr(nEntryNum)
         gEntryMask = bytarr(nEntryNum)
     
         ;Step through each entry
@@ -424,7 +423,7 @@ ZVARIABLE=zvariable
             cdf_attget, fileID, self.name, theEntry, attrValue, CDF_TYPE=type
             
             ;Store the value and type
-            datatype  = type
+            cdf_type  = type
             gEntryMask = 1B
         endfor
 
@@ -448,7 +447,7 @@ ZVARIABLE=zvariable
         ; elements to our arrays to capture all entry locations.
         ;
         nEntries   = maxGEntry + 1
-        datatype   = strarr(numGEntries)
+        cdf_type   = strarr(numGEntries)
         entryNum   = lindgen(numGEntries)
         gEntryMask = bytarr(nEntries)
         theType    = ''
@@ -478,7 +477,7 @@ ZVARIABLE=zvariable
 
             ;Store the value and type
             gEntryMask[iGEntry]  = 1B
-            datatype[gAttrCount] = type
+            cdf_type[gAttrCount] = type
             entryNum[gAttrCount] = iGEntry
             gAttrCount++
         endfor
@@ -491,7 +490,7 @@ ZVARIABLE=zvariable
     ;Return a scalar?
     if n_elements(attrValue) eq 1 then begin
         attrValue   = attrValue[0]
-        datatype    = datatype[0]
+        cdf_type    = cdf_type[0]
         entryNum    = entryNum[0]
         gEntryMask = gEntryMask[0]
     endif
@@ -509,7 +508,7 @@ end
 ;                               returned.
 ;
 ; :Keywords:
-;       DATATYPE:           out, optional, type=string
+;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `ATTRVALUE`. Posibilities are: 'CDF_BYTE',
 ;                               'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
 ;                               'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
@@ -520,7 +519,7 @@ end
 ;       ATTRVALUE:          Value(s) of the attribute.
 ;-
 function MrCDF_Attribute::GetVarAttrValue, varName, $
-DATATYPE=datatype, $
+CDF_TYPE=cdf_type, $
 COUNT=nElements
     compile_opt strictarr
 
@@ -543,7 +542,7 @@ COUNT=nElements
     ;Get the value -- STATUS will be 0 if SELF is a global attribute or if the
     ;                 variable does not contain the attribute.
     cdf_attget_entry, fileID, self.name, varName, attrEntryType, attrValue, status, $
-                      CDF_TYPE=datatype, ZVARIABLE=zvariable
+                      CDF_TYPE=cdf_type, ZVARIABLE=zvariable
     
     ;Unquiet
     !quiet = thisQuiet
@@ -564,7 +563,7 @@ end
 ;                       CDF attribute name.
 ;       NUMBER:         in, optional, type=integer
 ;                       CDF attribute number.
-;       DATATYPE:       out, optional, type=string
+;       CDF_TYPE:       out, optional, type=string
 ;                       CDF data type. Posibilities are: 'CDF_BYTE',
 ;                           'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
 ;                           'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
@@ -583,7 +582,7 @@ pro MrCDF_Attribute::GetProperty, $
 NAME=name, $
 NUMBER=number, $
 TYPE=type, $
-DATATYPE=datatype, $
+CDF_TYPE=cdf_type, $
 GLOBAL=global, $
 SCOPE=scope, $
 VALUE=value
@@ -591,7 +590,7 @@ VALUE=value
     on_error, 2
     
     ;Get Properties
-    if arg_present(datatype) then datatype =  self.datatype
+    if arg_present(cdf_type) then cdf_type =  self.cdf_type
     if arg_present(name)     then name     =  self.name
     if arg_present(number)   then number   =  self.number
     if arg_present(type)     then type     =  self.type
@@ -654,14 +653,14 @@ pro MrCDF_Attribute::ParseVariableAttribute
     ;Variable Attribute
     varinq = cdf_varinq(parentID, self.varname)
     cdf_attget_entry, parentID, attname, self.varname, attType, attValue, status, $
-                      CDF_TYPE=datatype, ZVARIABLE=varInq.is_zvar
+                      CDF_TYPE=cdf_type, ZVARIABLE=varInq.is_zvar
     if status eq 0 then message, 'Attribute "' + attname + '" does not exist for variable "' + self.varname + '".'
 
     ;Unquiet
     !quiet = thisQuiet
 
     ;Convert bytes back to strings.
-    if datatype eq 'CDF_CHAR' || datatype eq 'CDF_UCHAR' then attValue = string(attValue)
+    if cdf_type eq 'CDF_CHAR' || cdf_type eq 'CDF_UCHAR' then attValue = string(attValue)
     
     ;Make a data structure of the attribute information
     self.number   = attnum
@@ -723,8 +722,8 @@ function MrCDF_Attribute::ToStruct, varName
     
     ;Read the attribute data
     if self.global $
-        then data = self -> GetGlobalAttrValue(DATATYPE=datatype, COUNT=nElements) $
-        else data = self -> GetVarAttrValue(varName, DATATYPE=datatype, COUNT=nElements)
+        then data = self -> GetGlobalAttrValue(CDF_TYPE=cdf_type, COUNT=nElements) $
+        else data = self -> GetVarAttrValue(varName, CDF_TYPE=cdf_type, COUNT=nElements)
     
     ;Was there any data?
     if nElements eq 0 then data = '<NoData>'
@@ -734,7 +733,7 @@ function MrCDF_Attribute::ToStruct, varName
                    _TYPE:          'ATTRIBUTE', $
                    _SCOPE:    self.scope, $
                    _DATA:          data, $
-                   _DATATYPE:      datatype, $
+                   _CDF_TYPE:      cdf_type, $
                    _NELEMENTS:     nElements}
     
     return, attr_struct

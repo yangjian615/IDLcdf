@@ -313,10 +313,12 @@ function MrCDF_File::_OverloadHelp, varname
     ;General file properties
     self -> GetProperty, NGATTRS=gAttrCount, NVATTRS=vAttrCount, $
                          NRVARS=rVarCount, NZVARS=zVarCount, MAJORITY=majority, $
-                         ENCODING=encoding, DECODING=decoding
+                         ENCODING=encoding, DECODING=decoding, $
+                         COMPRESSION=compression, GZIP_LEVEL=gzip_level
     
-    ;Compression
-    comp = self -> GetCompression(GZIP_LEVEL=gzip_level)
+    ;GZip?
+    gzip = ''
+    if n_elements(gzip_level) gt 0 then gzip = ' at level ' + strtrim(gzip_level, 2)
     
     ;Variable information
     heapID  = obj_valid(self, /GET_HEAP_IDENTIFIER)
@@ -329,14 +331,8 @@ function MrCDF_File::_OverloadHelp, varname
     nRVarStr  = string('  # R-Variables:',         rVarCount,     FORMAT='(a-30, i0)')
     nZVarStr  = string('  # Z-Variables:',         zVarCount,     FORMAT='(a-30, i0)')
     majorStr  = string('  Majority:',              majority,      FORMAT='(a-30, a0)')
-    codeStr   = string('  Encoding/Decoding:',  encoding + '/' + decoding, FORMAT='(a-30, a0)')
-    case comp of
-        0: compStr = string('  Compression:', 'None',                       FORMAT='(a-30, a0)')
-        1: compStr = string('  Compression:', 'Run-Length Enconding',       FORMAT='(a-30, a0)')
-        2: compStr = string('  Compression:', 'Huffman',                    FORMAT='(a-30, a0)')
-        3: compStr = string('  Compression:', 'Adaptive Huffman',           FORMAT='(a-30, a0)')
-        5: compStr = string('  Compression:', 'GZip at level ', gzip_level, FORMAT='(a-30, a0, i0)')
-    endcase
+    codeStr   = string('  Encoding/Decoding:',     encoding + '/' + decoding, FORMAT='(a-30, a0)')
+    compStr   = string('  Compression: ',          compression + gzip,        FORMAT='(a-30, a0)')
     
     ;Output string for the file
     helpOut = [[selfStr], $
@@ -1108,6 +1104,7 @@ VARIABLE_SCOPE=variable_scope
 
     ;File must be parsed first
     if self.isParsed eq 0 then self -> ParseFile
+    count = 0
 
     ;Defaults
     all            = keyword_set(all)
@@ -1120,7 +1117,6 @@ VARIABLE_SCOPE=variable_scope
     if nAttrs eq 0 then return, ''
 
     ;Get all of the global attribute names
-    count = 0
     attrNames = strarr(nAttrs)
     allAttrs = self.attrs -> Get(/ALL)
     for i = 0, nAttrs-1 do begin
@@ -1183,7 +1179,7 @@ CDF_TYPE=cdf_type
         'OBJREF': attrObj = gAttribute
         
         'STRING': begin
-            attrObj = self.gAttrs -> FindByName(gAttribute, COUNT=gAttrCount)
+            attrObj = self.Attrs -> FindByName(gAttribute, COUNT=gAttrCount)
             if gAttrCount eq 0 then $
                 message, 'Cannot find global attribute with name "' + gAttribute + '".'
             if obj_valid(attrObj) eq 0 then $
@@ -1305,7 +1301,7 @@ SHOW=show
     endif
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     ;Get the variable object
     case size(variable, /TNAME) of
@@ -1344,17 +1340,26 @@ end
 ; :Keywords:
 ;       DATATYPE:           out, optional, type=string
 ;                           CDF datatype of `GATTRVALUE`.
+;       FOLLOW_PTR:         in, optional, type=boolean, default=0
+;                           If `ATTRVALUE` points to a variable, then follow the pointer,
+;                               read the variable's data, and return it.
+;       PTR_VALUE:          out, optional, type=string, default=''
+;                           If `FOLLOW_PTR` is set, this will return the name of the
+;                               variable that serves as the pointer. If `ATTRVALUE` is
+;                               not a pointer, then the empty string is returned.
 ;
 ; :Returns:
 ;       ATTRVALUE:          Value of the attribute.
 ;-
 function MrCDF_File::GetVarAttrValue, variable, attrName, $
-CDF_TYPE=cdf_type
+CDF_TYPE=cdf_type, $
+FOLLOW_PTR=follow_ptr, $
+PTR_VALUE=ptr_value
     compile_opt strictarr
     on_error, 2
 
     ;File must be parsed first
-    if self.isParsed eq 0 then ParseFile
+    if self.isParsed eq 0 then self -> ParseFile
 
     case size(variable, /TNAME) of
         'OBJREF': varObj = variable
@@ -1372,7 +1377,9 @@ CDF_TYPE=cdf_type
     endcase
 
     ;Get the variable attribute's value
-    value = varObj -> GetAttrValue(attrName, CDF_TYPE=cdf_type)
+    value = varObj -> GetAttrValue(attrName, CDF_TYPE   = cdf_type, $
+                                             FOLLOW_PTR = follow_ptr, $
+                                             PTR_VALUE  = ptr_value)
     
     return, value
 end
@@ -2030,7 +2037,7 @@ end
 ;                               a "DEPEND_0" variable attribute exists for `VARIABLE` and
 ;                               that its values are epoch times. The epoch type of TIME
 ;                               must match that of DEPEND_0.
-;       DATATYPE:           out, optional, type=string
+;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of the variable being read.
 ;       FILLVALUE:          out, optional, type=any
 ;                           Value used as a filler for missing data.
@@ -2052,7 +2059,7 @@ REC_START=rec_start, $
 STRING=string, $
 TIME=time, $
 ;OUTPUT
-DATATYPE=datatype, $
+CDF_TYPE=cdf_type, $
 DEPEND_0=depend_0, $
 DEPEND_1=depend_1, $
 DEPEND_2=depend_2, $
@@ -2083,6 +2090,7 @@ PADVALUE=padvalue
 ;-----------------------------------------------------
 ; Time Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
+
     ;Flag indicating that the variable given represents time.
     isTime = 0
     if time eq 1 then begin
@@ -2647,7 +2655,6 @@ ZVARIABLE=zvariable
     
     ;Defaults
     create = keyword_set(create)
-    if n_elements(datatype) eq 0 then datatype = size(data, /TNAME)
     
 ;-----------------------------------------------------
 ; Create Variable \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -2711,7 +2718,7 @@ ZVARIABLE=zvariable
     
     ;Prevent warnings from the CDF DLM.
     quiet_in = !Quiet
-    !Quiet = self.quiet
+    !Quiet   = self.quiet
 
     ;Write the data
     cdf_varput, self.fileID, varName, data, COUNT=count, INTERVAL=interval, OFFSET=offset, $

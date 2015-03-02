@@ -4,7 +4,7 @@
 ;       MrCDF_Browser__DEFINE
 ;
 ;*****************************************************************************************
-;   Copyright (c) 2013, Matthew Argall                                                   ;
+;   Copyright (c) 2015, Matthew Argall                                                   ;
 ;   All rights reserved.                                                                 ;
 ;                                                                                        ;
 ;   Redistribution and use in source and binary forms, with or without modification,     ;
@@ -37,75 +37,20 @@
 ;
 ; :Author:
 ;       Matthew Argall::
-;		University of New Hampshire
-;		Morse Hall, Room 113
+;       University of New Hampshire
+;       Morse Hall, Room 113
 ;       8 College Rd.
-;		Durham, NH, 03824
+;       Durham, NH, 03824
 ;       matthew.argall@wildcats.unh.edu
 ;
 ; :Categories:
-;
 ;       CDF Utilities, File I/O, Data Reader
 ;
 ; :History:
 ;   Modification History::
-;       08/08/2012  -   Written by Matthew Argall
-;       09/15/2013  -   Depend 3 variables were not being placed in the widget tree. Fixed.
-;                           Because this is a blocking widget, attempts to destroy the
-;                           object always occur within the INIT method, causing an error.
-;                           To subvert this, a CANCEL property was added and is checked
-;                           within INIT after the widget has been realized and the
-;                           XManager has returned. Banners and lists are updating properly.
-;                           - MRA
+;       02/09/2015  -   Written by Matthew Argall
 ;-
 ;*****************************************************************************************
-;+
-;   Create a leaf node associated with a CDF attribute. Global attributes will be nestled
-;   under the root tree node while variable attributes will be nestled under their
-;   respective variable node.
-;
-;       ROOT
-;           Global Attribute
-;           Global Attribute
-;           Global Attribute
-;
-;       ROOT
-;           Variable
-;               Variable Attribute
-;               Variable Attribute
-;               Variable Attribute
-;
-; :Params:
-;       ATTRNAME:       in, required, type=string
-;                       Name of the attribute.
-;       OPARENT:        in, required, type=object
-;                       Parent object of the attribute, either the CDF file object or
-;                           one of its child variable objects.
-;       PARENTID:       in, required, type=long
-;                       Widget ID of the tree node associated with `OPARENT`.
-;-
-pro MrCDF_Browser::Create_AttrNode, attrName, oParent, parentID
-	compile_opt idl2
-	on_error, 2
-
-	;Get the variable object
-	oAttr = oParent[attrName]
-
-	;Create a node under under the tree root
-	;   - Note that the parent becomes the child
-	;   - Instead of searching through the variable's attributes
-	;   - The attributes object's GetVarAttrValue method takes the name of a variable.
-	branchID = widget_tree(parentID, $
-	                       UNAME  = attrName, $
-	                       UVALUE = { object: self, $
-	                                  method: 'Tree_Events', $
-	                                  parent: oParent, $
-	                                  name:   attrName $
-	                                }, $
-	                       VALUE  = attrName)
-end
-
-
 ;+
 ;   The purpose of this method is to create a GUI from which a CDF Variable can be
 ;   selected.
@@ -118,6 +63,14 @@ end
 pro MrCDF_Browser::Create_GUI, group_leader
 	compile_opt idl2
 	on_error, 2
+	
+	;
+	; General layout:
+	;    TREE     TEXT
+	;             LABEL
+	;             BUTTON TEXT
+	;      OK  CANCEL
+	;
 
 ;---------------------------------------------------------------------
 ;Make the Top Level Base /////////////////////////////////////////////
@@ -125,15 +78,15 @@ pro MrCDF_Browser::Create_GUI, group_leader
 
 	;Make a top-level base with or without a groupleader. cdf_read_gui2 is called by other
 	;blocking widgets, so if a group_leader is given, then make cdf_read_gui2 modal.
-	if n_elements(group_leader) ne 0 then begin
+	if n_elements(group_leader) eq 0 then begin
+		no_block = 1
+		self.tlb = widget_base(TITLE='Read CDF', /COLUMN, XOFFSET=200, YOFFSET=100, $
+		                       UNAME='tlb', /BASE_ALIGN_CENTER)
+	endif else begin
 		no_block = 0
 		self.tlb = widget_base(GROUP_LEADER=group_leader, TITLE='Read CDF', /COLUMN, $
 		                       XOFFSET=100, YOFFSET=100, UNAME='tlb', /BASE_ALIGN_CENTER, $
 		                       /MODAL)
-	endif else begin
-		no_block = 0
-		self.tlb = widget_base(TITLE='Read CDF', /COLUMN, XOFFSET=200, YOFFSET=100, $
-		                       UNAME='tlb', /BASE_ALIGN_CENTER)
 	endelse
 
 ;---------------------------------------------------------------------
@@ -153,21 +106,37 @@ pro MrCDF_Browser::Create_GUI, group_leader
 	;Create the root of the widget tree.
 	self.oCDF -> GetProperty, FILENAME=filename
 	self.treeID = widget_tree(treeBase, /FOLDER, /EXPANDED, $
-	                          VALUE=filename, UNAME='TreeRoot', $
+	                          VALUE=filename, UNAME='TREEROOT', $
 	                          XSIZE=varwidth, YSIZE=nVars*!d.y_ch_size)
-	
-	;Put an info box next to the tree
-	infoID = widget_text(treeBase, /WRAP, UNAME='InfoBox', FRAME=2, $
-	                     XSIZE=max(strlen(vnames)), YSIZE=nVars)
 
 ;---------------------------------------------------------------------
-;Create OK and Cancel and "Show All" Buttons /////////////////////////
+;Create Info Box /////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
-    okBase = widget_base(self.tlb, ROW=1)
-    button = widget_button(okBase, /ALIGN_CENTER, UNAME='ok', VALUE='OK', $
-                           UVALUE={object: self, method:'Ok'})
-    button = widget_button(okBase, /ALIGN_CENTER, UNAME='cancel', VALUE='Cancel', $
-                           UVALUE={object: self, method:'Quit'})
+
+	;Create a column base
+	infoBase = widget_base(treeBase, COLUMN=1)
+	
+	;Put an info box next to the tree
+	infoID = widget_text(infoBase, /WRAP, UNAME='InfoBox', FRAME=2, /SCROLL, $
+	                     XSIZE=max(strlen(vnames)), YSIZE=nVars)
+	
+	;Create a label
+	labelID = widget_label(infoBase, UNAME='VARLABEL', VALUE='Variable Name for Import:')
+	
+	;Create import button and variable name box
+	importID = widget_base(infobase, ROW=1)
+	buttonID = widget_button(importID, VALUE='Import', UNAME='IMPORT', $
+	                         UVALUE={object: self, method: 'Import_Data'}) 
+	textID   = widget_text(importID, UNAME='VARNAME', VALUE='', /EDITABLE)
+
+;---------------------------------------------------------------------
+;Create OK and Cancel Buttons ////////////////////////////////////////
+;---------------------------------------------------------------------
+	okBase = widget_base(self.tlb, ROW=1)
+	button = widget_button(okBase, /ALIGN_CENTER, UNAME='ok', VALUE='OK', $
+	                       UVALUE={object: self, method:'Ok'})
+	button = widget_button(okBase, /ALIGN_CENTER, UNAME='cancel', VALUE='Cancel', $
+	                       UVALUE={object: self, method:'Quit'})
 
 ;---------------------------------------------------------------------
 ;Validate Pointers and Build the Tree ////////////////////////////////
@@ -215,17 +184,80 @@ pro MrCDF_Browser::Create_Tree, event
 ;Create the New Tree Structure ///////////////////////////////////////
 ;---------------------------------------------------------------------
 	;Get the Z-variables only.
-	vnames = self.oCDF -> GetVarNames(COUNT=nVars)
+	varnames   = self.oCDF -> GetVarNames(COUNT=nVars)
+	gAttrNames = self.oCDF -> GetAttrNames(COUNT=nGAttrs)
 
 	;Create a node for the file
-	self.oCDF -> GetProperty, FILENAME=filename
 	rootID = widget_tree(self.treeID, /FOLDER, $
-	                     UNAME  = 'Filename', $
-	                     UVALUE = {object: self, method: 'Tree_Events'}, $
-	                     VALUE  = filename)
+	                     UNAME  = 'FILE', $
+	                     UVALUE = {object: self, method: 'Tree_Events', type: 'FILE'}, $
+	                     VALUE  = 'File')
+	
+	;Create a node for global attributes and variables
+	gAttrID = widget_tree(rootID, /FOLDER, $
+	                      UNAME  = 'GATTRNODE', $
+	                      UVALUE = {object: self, method: 'Tree_Events', type: 'NONE'}, $
+	                      VALUE  = 'Global Attributes')
+	varID   = widget_tree(rootID, /FOLDER, $
+	                      UNAME  = 'VARNODE', $
+	                      UVALUE = {object: self, method: 'Tree_Events', type: 'NONE'}, $
+	                      VALUE  = 'Variables')
 
-	;Create a node for each variable
-	for i = 0, nVars - 1 do self -> Create_VarNode, vnames[i], self.oCDF, rootID
+	;Create a node for each global attribute and variable
+	for i = 0, nGAttrs - 1 do self -> Create_Tree_Attr, gAttrID, gAttrNames[i]
+	for i = 0, nVars   - 1 do self -> Create_Tree_Var,  varID,   varnames[i]
+end
+
+
+;+
+;   Create a leaf node associated with a CDF attribute. Global attributes will be nestled
+;   under the root tree node while variable attributes will be nestled under their
+;   respective variable node.
+;
+;       ROOT
+;           Global Attribute
+;           Global Attribute
+;           Global Attribute
+;
+;       ROOT
+;           Variable
+;               Variable Attribute
+;               Variable Attribute
+;               Variable Attribute
+;
+; :Params:
+;       ATTRNAME:       in, required, type=string
+;                       Name of the attribute.
+;       OPARENT:        in, required, type=object
+;                       Parent object of the attribute, either the CDF file object or
+;                           one of its child variable objects.
+;       PARENTID:       in, required, type=long
+;                       Widget ID of the tree node associated with `OPARENT`.
+;-
+pro MrCDF_Browser::Create_Tree_Attr, parentID, attrName, $
+VARNAME=varname
+	compile_opt idl2
+	on_error, 2
+
+	;Create the UValue
+	uvalue = {object:  self, $
+	          method:  'Tree_Events', $
+	          name:    attrName, $
+	          scope:   'GLOBAL', $
+	          type:    'ATTRIBUTE', $
+	          varname: ''}
+	
+	;Variable attribute?
+	if n_elements(varname) gt 0 then begin
+		uvalue.scope   = 'VARIABLE'
+		uvalue.varname = varname
+	endif
+
+	;Create a leave node
+	branchID = widget_tree(parentID, $
+	                       UNAME  = attrName, $
+	                       UVALUE = uvalue, $
+	                       VALUE  = attrName)
 end
 
 
@@ -241,57 +273,30 @@ end
 ;       VNAME:          in, required, type=string
 ;                       The variable name to be attached to the Tree root.
 ;-
-pro MrCDF_Browser::Create_VarNode, varName, oParent, parentID
+pro MrCDF_Browser::Create_Tree_Var, parentID, varName
 	compile_opt idl2
 	on_error, 2
 
-	;Get the variable object
-	oVar = oParent[varName]
+
+	;Create a user value
+	uvalue = { object: self, $
+	           method: 'Tree_Events', $
+	           name:   varName, $
+	           type:   'VARIABLE' $
+	         }
 
 	;Create a node under under the tree root
 	branchID = widget_tree(parentID, /FOLDER, $
 	                       UNAME  = VarName, $
-	                       UVALUE = { object: self, $
-	                                  method: 'Tree_Events', $
-	                                  parent: oParent, $
-	                                  name:   varName $
-	                                }, $
+	                       UVALUE = uvalue, $
 	                       VALUE  = varName)
 
 	;Get all of the attributes
+	tf_has = self.oCDF -> HasVar(varName, OBJECT=oVar)
 	attrNames = oVar -> GetAttrNames(COUNT=nAttrs)
 
 	;Set the attribute node
-	for i = 0, nAttrs - 1 do self -> Create_AttrNode, attrNames[i], oVar, branchID
-end
-
-
-;+
-;   The purpose of this method is to handle events triggered by the List widgets.
-;
-; :Params:
-;       EVENT:                  in, required, type=structure
-;                               A button_event structure generated windows manager.
-;-
-pro MrCDF_Browser::List_Events, event
-    ;do nothing
-end
-
-
-;+
-;   The purpose of this program is to handle events generated by the OK button.
-;   Specifically, it determines which data labels from the list pane, if any, were 
-;   selected.
-;
-; :Params:
-;       EVENT:                  in, required, type=structure
-;                               A button_event structure generated by a button press
-;-
-pro MrCDF_Browser::Ok, event
-	compile_opt idl2, hidden
-
-	;Destroy the GUI
-	self -> Quit, event
+	for i = 0, nAttrs - 1 do self -> Create_Tree_Attr, branchID, attrNames[i], VARNAME=varname
 end
 
 
@@ -318,6 +323,65 @@ VARIABLE = variable
 end
 
 
+;+
+;   The purpose of this program is to handle events generated by the "IMPORT" button.
+;   Import data to the $MAIN$ level.
+;
+; :Params:
+;       EVENT:                  in, required, type=structure
+;                               A button_event structure generated by a button press
+;-
+pro MrCDF_Browser::Import_Data, event
+	compile_opt idl2, hidden
+	on_error, 2
+
+	;Determine what was selected by examining the parent
+	nodeID = widget_info(self.treeID, /TREE_SELECT)
+	widget_control, nodeID, GET_UVALUE=uvalue
+	
+	case uvalue.type of
+		;The "Global Attributes" or "Variables" folders
+		'FILE':      data = self.oCDF -> ToStruct()
+		'VARIABLE':  data = self.oCDF -> Read(uvalue.name)
+		'ATTRIBUTE': begin
+			if uvalue.scope eq 'GLOBAL' $
+				then data = self.oCDF -> GetGlobalAttrValue(uvalue.name) $
+				else data = self.oCDF -> GetVarAttrValue(uvalue.varname, uvalue.name)
+		endcase
+		'NONE': return ;Do nothing
+		else: message, 'Invalid type: "' + uvalue.type + '".'
+	endcase
+
+	;Retrieve the variable name into which the data will be saved.
+	nameID = widget_info(event.top, FIND_BY_UNAME='VARNAME')
+	widget_control, nameID, GET_VALUE=name
+	
+	;Ensure a valid IDL variable name
+	name = idl_validname(name, /CONVERT_ALL)
+
+	; Create a main-level variable.
+	(Scope_VarFetch(name, LEVEL=1, /ENTER)) = data
+	Print, 'A variable named "' + name + '" has been created at the main IDL level.'
+end
+
+
+;+
+;   The purpose of this program is to handle events generated by the OK button.
+;   Specifically, it determines which data labels from the list pane, if any, were 
+;   selected.
+;
+; :Params:
+;       EVENT:                  in, required, type=structure
+;                               A button_event structure generated by a button press
+;-
+pro MrCDF_Browser::Ok, event
+	compile_opt idl2, hidden
+
+	;Destroy the widget.
+	widget_control, event.top, /destroy
+end
+
+
 
 ;+
 ;   The purpose of this program is to perform some cleanup and destroy the widget. It
@@ -328,31 +392,15 @@ end
 ;                           An event structure returned by the windows manager.
 ;-
 pro MrCDF_Browser::Quit, event
-    compile_opt idl2
-    
-    ;Destroy the widget.
-    widget_control, event.top, /destroy
+	compile_opt idl2
+	
+	;Destroy the object
+	obj_destroy, self
 end
 
 
 ;+
 ;   The purpose of this method is to handle events triggered by the widget tree.
-;
-;   Current tasks::
-;
-;       1. Check if the selection has changed.
-;       2. Update the information in the text box
-;       3. Update the widget labels (called "banners" here to distinguish them from CDF
-;           data labels) describing what is contained in the list panes
-;       4. Update the data labels in the list panes
-;
-;   Note that:
-;
-;       CDF files are often disorganized and the data labels do not match the corresponding
-;       DEPEND_# variable (e.g. DEPEND_1 does not correspond to LABL_PTR_1, nor does it
-;       correspond to the first dimension of VARIABLE). Much of what follows is intended
-;       to organize them. This will pay off later, when the "ok" button is pressed.
-;
 ;
 ; :Params:
 ;       EVENT:                  in, required, type=structure
@@ -384,67 +432,26 @@ pro MrCDF_Browser::Tree_Events, event
 	
 	;Set the new selection
 	self.selection = uname
-	if uname eq 'Filename' then return
 
 ;---------------------------------------------------------------------
 ;Update Text Widget //////////////////////////////////////////////////
 ;---------------------------------------------------------------------
 	widget_control, event.id, GET_UVALUE=uvalue
 	
-	self -> Update_InfoBox, uvalue.parent, uvalue.name
-end
-
-
-;+
-;   The purpose of this method is to update the banners that describe the list panes
-;   when a new leaf is selected.
-;
-; :Params:
-;       EVENT:          in, required, type=structure
-;                       A button_event structure generated by the windows manager.
-;       VNAME:          in, required, type=string
-;                       The variable name whose data labels are to be displayed in the
-;                           list panes of the GUI.
-;-
-pro MrCDF_Browser::Update_Banners, event, vname
-    compile_opt idl2
-    
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return
-    endif
+	case uvalue.type of
+		'FILE':      self -> GetInfo_File
+		'ATTRIBUTE': self -> GetInfo_Attr, uvalue.name, VARNAME=uvalue.varname
+		'VARIABLE':  self -> GetInfo_Var,  uvalue.name
+		'NONE':      return ;Do nothing.
+		else: message, 'Unknown tree event type "' + uvalue.type + '".'
+	endcase
 
 ;---------------------------------------------------------------------
-;Fill the Labels /////////////////////////////////////////////////////
+;Update Text Widget //////////////////////////////////////////////////
 ;---------------------------------------------------------------------
-    
-    ;Depend_N
-    self.oCDF -> get_ConfigVals, vname, $
-                                 DEPEND_1=depend_1, $
-                                 DEPEND_2=depend_2, $
-                                 DEPEND_3=depend_3
-    if n_elements(depend_1) eq 0 then depend_1 = ''
-    if n_elements(depend_2) eq 0 then depend_2 = ''
-    if n_elements(depend_3) eq 0 then depend_3 = ''
-    depend_n = [depend_1, depend_2, depend_3]
-
-    ;Label IDs
-    label_ids = intarr(3)
-    label_ids[0] = widget_info(event.top, FIND_BY_UNAME='BANNER_0')
-    label_ids[1] = widget_info(event.top, FIND_BY_UNAME='BANNER_1')
-    label_ids[2] = widget_info(event.top, FIND_BY_UNAME='BANNER_2')
-
-    ;Step through DEPEND_[1-3]
-    for iDep = 0, 2 do begin
-
-        ;If DEPEND_# exists, then update the label.
-        if depend_n[iDep] ne '' $
-            then widget_control, label_ids[iDep], SET_VALUE=depend_n[iDep] $
-            else widget_control, label_ids[iDep], SET_VALUE=' '
-    endfor
+	;Update the variable name field
+	nameID = widget_info(event.top, FIND_BY_UNAME='VARNAME')
+	widget_control, nameID, SET_VALUE=uname
 end
 
 
@@ -460,7 +467,8 @@ end
 ;                       The variable name whose data labels are to be displayed in the
 ;                           list panes of the GUI.
 ;-
-pro MrCDF_Browser::Update_InfoBox, oParent, childName
+pro MrCDF_Browser::GetInfo_Attr, attrName, $
+VARNAME=varname
 	compile_opt idl2
 
 	;catch errors
@@ -471,58 +479,32 @@ pro MrCDF_Browser::Update_InfoBox, oParent, childName
 		return
 	endif
 
+	;Default
+	if n_elements(varname) eq 0 then varname = ''
+
 	;Newline character
 	if (!d.name eq 'WIN') $
 		then newline = string([13B, 10B]) $
 		else newline = string(10B)
 
-	;The parent is either a CDF file or variable object
-	tf_var = 0
-	case MrObj_Class(oParent) of
-		'MRCDF_FILE':     tf_var = 1
-		'MRCDF_VARIABLE': tf_var = 0
-		else: message, 'Unknown object class "' + MrObj_Class(oParent) + '".'
-	endcase
+;---------------------------------------------------------------------
+; Attribute Properties ///////////////////////////////////////////////
+;---------------------------------------------------------------------
+	tf_has = self.oCDF -> HasAttr(attrName, OBJECT=oAttr)
+	oAttr -> GetProperty, SCOPE=scope
+	if varname eq '' $
+		then data = self.oCDF -> GetGlobalAttrValue(attrName, CDF_TYPE=cdf_type) $
+		else data = self.oCDF -> GetVarAttrValue(varname, attrName, CDF_TYPE=cdf_type)
+	
+	;Number of data values
+	nData = n_elements(data) 
+	iMax  = (nData - 1) < 20
 
-;---------------------------------------------------------------------
-; Variable ///////////////////////////////////////////////////////////
-;---------------------------------------------------------------------
-	if tf_var then begin
-		;Get the variable and its info.
-		tf_has = oParent -> HasVar(childName, OBJECT=oVar)
-		oVar  -> GetProperty, NAME=name, CDF_TYPE=cdf_type, $
-		                      DIMENSIONS=dimensions, MAXREC=maxrec
-
-		;Size of the variable
-		if n_elements(dimensions) eq 1 && dimensions eq 0 then dimensions = 1
-		var_size = '[' + strjoin(strtrim(dimensions, 2), ', ') + ', ' + strtrim(maxrec, 2) + ']'
-		
-		;Data preview
-		iMax = (product(dimensions) * maxrec) < 20
-		data = oVar -> GetValue()
-
-		;Combine the info into an array
-		info = ["Dataset: '" + name + "'", $
-		        cdf_type, $
-		        var_size, $
-		        'Data:']
-;---------------------------------------------------------------------
-; Attribute //////////////////////////////////////////////////////////
-;---------------------------------------------------------------------
-	endif else begin
-		tf_has = oParent -> HasAttr(childName, OBJECT=oAttr)
-		data   = oParent -> GetAttrValue(childName, CDF_TYPE=cdf_type)
-		oAttr -> GetProperty, NAME=name
-		
-		;Number of data values
-		nData = n_elements(data) 
-		iMax  = (nData - 1) < 20
-		
-		info = ['Attribute: "' + name + '"', $
-		        string(FORMAT='(%"%i elements")', nData), $
-		        cdf_type, $
-		        'Data:']
-	endelse
+	info = ['Attribute:   "' + attrName + '"', $
+	        'Scope:       ' + scope, $
+	        'CDF Type:    ' + cdf_type, $
+	        '# Elements:  ' + strtrim(nData, 2), $
+	        'Data:']
 ;---------------------------------------------------------------------
 ; Format the Data ////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
@@ -551,76 +533,154 @@ end
 
 
 ;+
-;   The purpose of this method is to update the list panes when a new leaf is selected.
+;   The purpose of this method is to update the text box to diplay information relating
+;   to the selected variable (or the variable associated with the selected DEPEND_#
+;   variable).
 ;
 ; :Params:
 ;       EVENT:          in, required, type=structure
-;                       A button_event structure generated the windows manager
+;                       A button_event structure generated the windows manager.
 ;       VNAME:          in, required, type=string
 ;                       The variable name whose data labels are to be displayed in the
 ;                           list panes of the GUI.
 ;-
-pro MrCDF_Browser::Update_Lists, event, vname
-    compile_opt idl2
-    
-    ;catch errors
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return
-    endif
+pro MrCDF_Browser::GetInfo_File
+	compile_opt idl2
+
+	;catch errors
+	catch, the_error
+	if the_error ne 0 then begin
+		catch, /cancel
+		void = cgErrorMsg()
+		return
+	endif
+
+	;Newline character
+	if (!d.name eq 'WIN') $
+		then newline = string([13B, 10B]) $
+		else newline = string(10B)
 
 ;---------------------------------------------------------------------
-;Fill the Lists //////////////////////////////////////////////////////
+; Attribute Properties ///////////////////////////////////////////////
 ;---------------------------------------------------------------------
+	self.oCDF -> GetProperty, FILENAME = filename, $
+	                          COMPRESSION = compression, $
+	                          ENCODING    = encoding, $
+	                          DECODING    = decoding, $
+	                          GZIP_LEVEL  = gzip_level, $
+	                          MAJORITY    = majority, $
+	                          NGATTRS     = nGAttrs, $
+	                          NVATTRS     = nVAttrs, $
+	                          NRVARS      = nRVars, $
+	                          NZVARS      = nZVars
 
-    ;Make the label pointers easier to get to
-    self.oCDF -> Get_ConfigVals, vname, $
-                                 LABL_PTR_1=labl_ptr_1, $
-                                 LABL_PTR_2=labl_ptr_2, $
-                                 LABL_PTR_3=labl_ptr_3
-                                 
-    if n_elements(labl_ptr_1) eq 0 then labl_ptr_1 = ''
-    if n_elements(labl_ptr_2) eq 0 then labl_ptr_2 = ''
-    if n_elements(labl_ptr_3) eq 0 then labl_ptr_3 = ''
-    label_pointers = [labl_ptr_1, labl_ptr_2, labl_ptr_3]
-    
-    ;Depend_N
-    self.oCDF -> get_ConfigVals, vname, $
-                                 DEPEND_1=depend_1, $
-                                 DEPEND_2=depend_2, $
-                                 DEPEND_3=depend_3
-    if n_elements(depend_1) eq 0 then depend_1 = ''
-    if n_elements(depend_2) eq 0 then depend_2 = ''
-    if n_elements(depend_3) eq 0 then depend_3 = ''
-    depend_n = [depend_1, depend_2, depend_3]
-    
-    ;IDs of the widget lists
-    list_ids = indgen(3)
-    list_ids[0] = widget_info(event.top, FIND_BY_UNAME='LIST_0')
-    list_ids[1] = widget_info(event.top, FIND_BY_UNAME='LIST_1')
-    list_ids[2] = widget_info(event.top, FIND_BY_UNAME='LIST_2')
-    
-    ;Step through all of the labels
-    for iLabel = 0, 2 do begin
+	info = [ 'DIRECTORY:', $
+	         file_dirname(filename), $
+	         '', $
+	         'FILENAME:', $
+	         file_basename(filename), $
+	         '', $
+	         'COMPRESSION:', $
+	         '    ' + compression + ( n_elements(gzip_level) eq 0 ? '' : ' at level ' + strtrim(gzip_level, 2) ), $
+	         '', $
+	         'ENCODING/DECODING', $
+	         '    ' + encoding + ' / ' + decoding, $
+	         '', $
+	         'MAJORITY', $
+	         '    ' + majority, $
+	         '', $
+	         '# Global Attributes:      ' + strtrim(nGAttrs, 2), $
+	         '# Variable Attributes:    ' + strtrim(nVAttrs, 2), $
+	         '# R-Variables:            ' + strtrim(nRVars, 2), $
+	         '# Z-Variables:            ' + strtrim(nZVars, 2) $
+	       ]
 
-        ;If LABEL_# exits, fill the list with data labels.
-        if self.oCDF -> varHasAtt(vname, label_pointers[iLabel], ATT_VALUE=label_name) then begin
-            temp_labels = self.oCDF -> Read(label_name, /STRING)
-            widget_control, list_ids[iLabel], SET_VALUE=temp_labels
-        
-        ;If DEPEND_N exists, use the data values as labels.
-        endif else if depend_n[iLabel] ne '' then begin
-            label_values = self.oCDF -> Read(depend_n[iLabel])
-            temp_labels = string(label_values, FORMAT='(F0.3)')
-            widget_control, list_ids[iLabel], SET_VALUE=temp_labels
-        
-        ;Otherwise, clear the list
-        endif else begin
-            widget_control, list_ids[iLabel], SET_VALUE=''
-        endelse
-    endfor
+;---------------------------------------------------------------------
+; Update Text Box ////////////////////////////////////////////////////
+;---------------------------------------------------------------------
+	;Update the info box.
+	infoID = widget_info(self.tlb, FIND_BY_UNAME='InfoBox')
+	widget_control, infoID, SET_VALUE=strjoin(info, newline)
+end
+
+
+;+
+;   The purpose of this method is to update the text box to diplay information relating
+;   to the selected variable (or the variable associated with the selected DEPEND_#
+;   variable).
+;
+; :Params:
+;       EVENT:          in, required, type=structure
+;                       A button_event structure generated the windows manager.
+;       VNAME:          in, required, type=string
+;                       The variable name whose data labels are to be displayed in the
+;                           list panes of the GUI.
+;-
+pro MrCDF_Browser::GetInfo_Var, varname
+	compile_opt idl2
+
+	;catch errors
+	catch, the_error
+	if the_error ne 0 then begin
+		catch, /cancel
+		void = cgErrorMsg()
+		return
+	endif
+
+	;Newline character
+	if (!d.name eq 'WIN') $
+		then newline = string([13B, 10B]) $
+		else newline = string(10B)
+
+;---------------------------------------------------------------------
+; Variable Properties ////////////////////////////////////////////////
+;---------------------------------------------------------------------
+	;Get the variable and its info.
+	tf_has = self.oCDF -> HasVar(varname, OBJECT=oVar)
+	oVar  -> GetProperty, NAME=name, CDF_TYPE=cdf_type, $
+	                      DIMENSIONS=dimensions, MAXREC=maxrec, $
+	                      COMPRESSION=compression, GZIP_LEVEL=gzip_level
+
+	;Size of the variable
+	if n_elements(dimensions) eq 0 then dimensions = 0
+	if n_elements(dimensions) eq 1 && dimensions eq 0 then dimensions = 1
+	var_size = '[' + strjoin(strtrim(dimensions, 2), ', ') + ', ' + strtrim(maxrec, 2) + ']'
+	
+	;Data preview
+	iMax = (product(dimensions) * maxrec) < 20
+	data = oVar -> GetValue()
+
+	;Combine the info into an array
+	info = ['Variable:     '  + name, $
+	        'CDF Type:     '  + cdf_type, $
+	        'Size:         '  + var_size, $
+	        'Compression:  '  + compression + (n_elements(gzip_level) eq 0 ? '' : ' at level ' + strtrim(gzip_level, 2) ), $
+	        'Data:']
+
+;---------------------------------------------------------------------
+; Format the Data ////////////////////////////////////////////////////
+;---------------------------------------------------------------------
+	case 1 of
+		MrIsA(data, /INTEGER): fmt = '(i0)'
+		MrIsA(data, /REAL):    fmt = '(f0)'
+		MrIsA(data, 'STRING'): fmt = '(a0)'
+		else: message, 'Unexpected data type "' + size(data, /TNAME), '".'
+	endcase
+	
+	;Join data into a string
+	if iMax gt 0 $
+		then dataStr = '[' + strjoin(string(data[0:iMax], FORMAT=fmt), ', ') + ']' $
+		else dataStr = string(data[0:iMax], FORMAT=fmt)
+;---------------------------------------------------------------------
+; Update Text Box ////////////////////////////////////////////////////
+;---------------------------------------------------------------------
+	
+	;Separate elements with a new line
+	info = strjoin([info, dataStr], newline)
+	
+	;Update the info box.
+	infoID = widget_info(self.tlb, FIND_BY_UNAME='InfoBox')
+	widget_control, infoID, SET_VALUE=info
 end
 
 

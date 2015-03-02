@@ -36,6 +36,15 @@
 ;   A program for demonstrating how to read, write, and copy information in CDF files
 ;   using the MrCDF_File object.
 ;
+; :Params:
+;       DIRECTORY:          in, optional, type=string, default=pwd
+;                           Directory in which example CDF files should be written.
+;
+; :Uses:
+;   cgDemoData.pro
+;   cgErrorMSG.pro
+;   MrCDF_File__Define.pro
+;
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
@@ -47,7 +56,8 @@
 ; :History:
 ;   Modification History::
 ;       2014/03/07  -   Written by Matthew Argall
-;       2015/02/06  -   Copy file contents to another CDF file.
+;       2015/02/06  -   Copy file contents to another CDF file. - MRA
+;       2015/02/09  -   Include CDF file browser. - MRA
 ;-
 pro MrCDF_File_Examples, directory
     compile_opt strictarr
@@ -189,17 +199,6 @@ pro MrCDF_File_Examples, directory
     message, 'File written to: "' + filename + '".', /INFORMATIONAL
     
 ;-----------------------------------------------------
-; Open the File and Display Contents \\\\\\\\\\\\\\\\\
-;-----------------------------------------------------
-    ;Read the data
-    fileObj = obj_new('MrCDF_File', filename)
-    fileObj -> FilePrint
-    data1   = fileObj -> Read('M51_Whilrpool_Galaxy')
-    data2   = fileObj -> Read('Blood_Study')
-    help, data1, data2
-    obj_destroy, fileObj
-    
-;-----------------------------------------------------
 ; Copy to New File \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
 
@@ -230,13 +229,9 @@ pro MrCDF_File_Examples, directory
     obj_destroy, destObj
     
 ;-----------------------------------------------------
-; Open the Destination File and Display Contents \\\\\
+; Browse the Example and Copy Files \\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     ;Read the data
-    copyObj = obj_new('MrCDF_File', destFile)
-    copyObj -> FilePrint
-    data1   = copyObj -> Read('M51_Whilrpool_Galaxy')
-    data2   = copyObj -> Read('Blood_Study')
-    help, data1, data2
-    obj_destroy, copyObj
+    empl_browser = obj_new('MrCDF_Browser', filename)
+    copy_browser = obj_new('MrCDF_Browser', destFile)
 end
