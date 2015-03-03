@@ -201,7 +201,7 @@ function MrCDF_Variable::_OverloadPrint
     
     ;Help string
     outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
-                    FORMAT='(i3, 2x, a-20, 2x, a4, 2x, a14, 2x, a0)')
+                    FORMAT='(i3, 2x, a-0, 2x, a4, 2x, a14, 2x, a0)')
 
     ;Allocate memory for the attribute help string    
     nAttrs      = self.attributes -> Count()
@@ -371,7 +371,8 @@ end
 ;                               begin reading. OFFSET is a 1-dimensional array
 ;                               containing one element per CDF dimension.
 ;       REC_COUNT:          in, optional, type=long, default=maxrec+1
-;                           Number of records to be read.
+;                           Number of records to be read. A REC_COUNT of 1 automatically
+;                               sets `SINGLE_VALUE`=1.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
 ;       REC_START:          in, optional, type=integer, defualt=0
@@ -417,9 +418,10 @@ PADVALUE=padvalue
     
     ;Defaults
     single_value = keyword_set(single_value)
-    if n_elements(string)    eq 0 then string    = 1
-    if n_elements(rec_count) eq 0 then rec_count = self.maxrec + 1
-    if n_elements(rec_start) eq 0 then rec_start = 0
+    if n_elements(string)    eq 0 then string       = 1
+    if n_elements(rec_count) eq 0 then rec_count    = self.maxrec + 1
+    if n_elements(rec_start) eq 0 then rec_start    = 0
+    if rec_count             eq 1 then single_value = 1
     
     ;Get the file ID
     parentID = self.parent -> GetFileID()

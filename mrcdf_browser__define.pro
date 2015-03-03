@@ -49,6 +49,11 @@
 ; :History:
 ;   Modification History::
 ;       02/09/2015  -   Written by Matthew Argall
+;       2015/02/02  -   Added the GetSelect method. Renamed ::Quit to ::Cancel. Added
+;                           the BLOCK keyword. All UVALUES now contain the same
+;                           information. Added the CANCEL and SELECT_* object properties
+;                           and the GetProperty method. ::Cancel does not destroy the
+;                           object, in case we are in ::Init. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -59,8 +64,13 @@
 ;       GROUP_LEADER:       in, optional, type=int
 ;                           The widget ID of an existing widget that serves as group
 ;                               leader for the newly-created widget.
+;
+; :Keywords:
+;       BLOCK:          in, optional, type=boolean, default=0
+;                       If set, the gui will block the command line.
 ;-
-pro MrCDF_Browser::Create_GUI, group_leader
+pro MrCDF_Browser::Create_GUI, group_leader, $
+BLOCK=block
 	compile_opt idl2
 	on_error, 2
 	
@@ -79,7 +89,7 @@ pro MrCDF_Browser::Create_GUI, group_leader
 	;Make a top-level base with or without a groupleader. cdf_read_gui2 is called by other
 	;blocking widgets, so if a group_leader is given, then make cdf_read_gui2 modal.
 	if n_elements(group_leader) eq 0 then begin
-		no_block = 1
+		no_block = ~keyword_set(block)
 		self.tlb = widget_base(TITLE='Read CDF', /COLUMN, XOFFSET=200, YOFFSET=100, $
 		                       UNAME='tlb', /BASE_ALIGN_CENTER)
 	endif else begin
@@ -136,7 +146,7 @@ pro MrCDF_Browser::Create_GUI, group_leader
 	button = widget_button(okBase, /ALIGN_CENTER, UNAME='ok', VALUE='OK', $
 	                       UVALUE={object: self, method:'Ok'})
 	button = widget_button(okBase, /ALIGN_CENTER, UNAME='cancel', VALUE='Cancel', $
-	                       UVALUE={object: self, method:'Quit'})
+	                       UVALUE={object: self, method:'Cancel'})
 
 ;---------------------------------------------------------------------
 ;Validate Pointers and Build the Tree ////////////////////////////////
@@ -188,19 +198,38 @@ pro MrCDF_Browser::Create_Tree, event
 	gAttrNames = self.oCDF -> GetAttrNames(COUNT=nGAttrs)
 
 	;Create a node for the file
+	self.oCDF -> GetProperty, FILENAME=filename
 	rootID = widget_tree(self.treeID, /FOLDER, $
 	                     UNAME  = 'FILE', $
-	                     UVALUE = {object: self, method: 'Tree_Events', type: 'FILE'}, $
+	                     UVALUE = { object:  self, $
+	                                method:  'Tree_Events', $
+	                                name:    filename, $
+	                                scope:   '', $
+	                                type:    'FILE', $
+	                                varname: '' $
+	                              }, $
 	                     VALUE  = 'File')
 	
 	;Create a node for global attributes and variables
 	gAttrID = widget_tree(rootID, /FOLDER, $
 	                      UNAME  = 'GATTRNODE', $
-	                      UVALUE = {object: self, method: 'Tree_Events', type: 'NONE'}, $
+	                      UVALUE = { object:  self, $
+	                                 method:  'Tree_Events', $
+	                                 name:    '', $
+	                                 scope:   '', $
+	                                 type:    'NONE', $
+	                                 varname: '' $
+	                               }, $
 	                      VALUE  = 'Global Attributes')
 	varID   = widget_tree(rootID, /FOLDER, $
 	                      UNAME  = 'VARNODE', $
-	                      UVALUE = {object: self, method: 'Tree_Events', type: 'NONE'}, $
+	                      UVALUE = { object:  self, $
+	                                 method:  'Tree_Events', $
+	                                 name:    '', $
+	                                 scope:   '', $
+	                                 type:    'NONE', $
+	                                 varname: '' $
+	                               }, $
 	                      VALUE  = 'Variables')
 
 	;Create a node for each global attribute and variable
@@ -280,9 +309,11 @@ pro MrCDF_Browser::Create_Tree_Var, parentID, varName
 
 	;Create a user value
 	uvalue = { object: self, $
-	           method: 'Tree_Events', $
-	           name:   varName, $
-	           type:   'VARIABLE' $
+	           method:  'Tree_Events', $
+	           name:    varName, $
+	           scope:   '', $
+	           type:    'VARIABLE', $
+	           varname: '' $
 	         }
 
 	;Create a node under under the tree root
@@ -297,29 +328,6 @@ pro MrCDF_Browser::Create_Tree_Var, parentID, varName
 
 	;Set the attribute node
 	for i = 0, nAttrs - 1 do self -> Create_Tree_Attr, branchID, attrNames[i], VARNAME=varname
-end
-
-
-;+
-;   The purpose of this method is to retrieve object properties.
-;
-; :Keywords:
-;-
-pro MrCDF_Browser::GetProperty, $
-LABEL_1 = label_1, $
-LABEL_2 = label_2, $
-LABEL_3 = label_3, $
-DEPEND = depend, $
-DIMENSION = dimension, $
-VARIABLE = variable
-    compile_opt idl2
-
-    if arg_present(label_1) and n_elements(*self.label_1) ne 0 then label_1 = *self.label_1
-    if arg_present(label_2) and n_elements(*self.label_2) ne 0 then label_2 = *self.label_2
-    if arg_present(label_3) and n_elements(*self.label_3) ne 0 then label_3 = *self.label_3
-    if arg_present(depend) then depend = self.thisDepend
-    if arg_present(dimension) then dimension = self.thisDim
-    if arg_present(variable) then variable = self.thisVar
 end
 
 
@@ -367,8 +375,6 @@ end
 
 ;+
 ;   The purpose of this program is to handle events generated by the OK button.
-;   Specifically, it determines which data labels from the list pane, if any, were 
-;   selected.
 ;
 ; :Params:
 ;       EVENT:                  in, required, type=structure
@@ -384,18 +390,20 @@ end
 
 
 ;+
-;   The purpose of this program is to perform some cleanup and destroy the widget. It
-;   is called by, e.g., Ok.
+;   Event handler for the "Cancel" button.
 ;
 ; :Params:
 ;       EVENT:              in, required, type=structure
 ;                           An event structure returned by the windows manager.
 ;-
-pro MrCDF_Browser::Quit, event
+pro MrCDF_Browser::Cancel, event
 	compile_opt idl2
 	
-	;Destroy the object
-	obj_destroy, self
+	;Cancelled
+	self.cancel = 1
+	
+	;Destroy the widget
+	widget_control, event.top, /DESTROY
 end
 
 
@@ -431,12 +439,16 @@ pro MrCDF_Browser::Tree_Events, event
 	if uname eq self.selection then return
 	
 	;Set the new selection
-	self.selection = uname
+	widget_control, event.id, GET_UVALUE=uvalue
+	self.select_uname   = uname
+	self.select_name    = uvalue.name
+	self.select_type    = uvalue.type
+	self.select_scope   = uvalue.scope
+	self.select_varname = uvalue.varname
 
 ;---------------------------------------------------------------------
 ;Update Text Widget //////////////////////////////////////////////////
 ;---------------------------------------------------------------------
-	widget_control, event.id, GET_UVALUE=uvalue
 	
 	case uvalue.type of
 		'FILE':      self -> GetInfo_File
@@ -456,16 +468,11 @@ end
 
 
 ;+
-;   The purpose of this method is to update the text box to diplay information relating
-;   to the selected variable (or the variable associated with the selected DEPEND_#
-;   variable).
+;   Obtain information about an attribute so that it can be displayed in the test widget.
 ;
 ; :Params:
-;       EVENT:          in, required, type=structure
-;                       A button_event structure generated the windows manager.
-;       VNAME:          in, required, type=string
-;                       The variable name whose data labels are to be displayed in the
-;                           list panes of the GUI.
+;       ATTRNAME:       in, required, type=structure
+;                       Name of the attribute for which information is wanted.
 ;-
 pro MrCDF_Browser::GetInfo_Attr, attrName, $
 VARNAME=varname
@@ -533,16 +540,7 @@ end
 
 
 ;+
-;   The purpose of this method is to update the text box to diplay information relating
-;   to the selected variable (or the variable associated with the selected DEPEND_#
-;   variable).
-;
-; :Params:
-;       EVENT:          in, required, type=structure
-;                       A button_event structure generated the windows manager.
-;       VNAME:          in, required, type=string
-;                       The variable name whose data labels are to be displayed in the
-;                           list panes of the GUI.
+;   Get information about the CDF file so that it can be displayed in the text widget.
 ;-
 pro MrCDF_Browser::GetInfo_File
 	compile_opt idl2
@@ -605,16 +603,11 @@ end
 
 
 ;+
-;   The purpose of this method is to update the text box to diplay information relating
-;   to the selected variable (or the variable associated with the selected DEPEND_#
-;   variable).
+;   Obtain information about a variable so that it can be displayed in the test widget.
 ;
 ; :Params:
-;       EVENT:          in, required, type=structure
-;                       A button_event structure generated the windows manager.
-;       VNAME:          in, required, type=string
-;                       The variable name whose data labels are to be displayed in the
-;                           list panes of the GUI.
+;       VARNAME:        in, required, type=structure
+;                       Name of the variable for which information is wanted.
 ;-
 pro MrCDF_Browser::GetInfo_Var, varname
 	compile_opt idl2
@@ -681,6 +674,66 @@ pro MrCDF_Browser::GetInfo_Var, varname
 	;Update the info box.
 	infoID = widget_info(self.tlb, FIND_BY_UNAME='InfoBox')
 	widget_control, infoID, SET_VALUE=info
+end
+
+
+;+
+;   Retrieve object properties.
+;
+; :Keywords:
+;       CANCEL:         out, optional, type=boolean
+;                       Indicates that the GUI was cancelled.
+;-
+function MrCDF_Browser::GetProperty, $
+CANCEL=cancel
+	compile_opt idl2
+	on_error, 2
+
+	;Get object properties
+	if arg_present(cancel) then cancel = self.cancel
+end
+
+
+
+;+
+;   Retrieve information about the selected item.
+;
+; :Keywords:
+;       SCOPE:          out, optional, type=string
+;                       A named variable to hold the attribute scope. Options are either
+;                           "VARIABLE" or "GLOBAL". If `TYPE` is not 'Attribute', an empty
+;                           string is returned.
+;       TYPE:           out, optional, type=string
+;                       A named variable to hold the type of item selected. Options are::
+;                           "FILE"
+;                           "VARIABLE"
+;                           "ATTRIBUTE"
+;       VARNAME:        out, optional, type=string
+;                       A named variable to hold the variable name associated with a
+;                           variable attribute. If the selected item is not a variable
+;                           attribute (see `TYPE` and `SCOPE`), the empty string is returned.
+;
+; :Returns:
+;       NAME:           Name of the selected item.
+;-
+function MrCDF_Browser::GetSelect, $
+TYPE=type, $
+SCOPE=scope, $
+VARNAME=varname
+	compile_opt idl2
+	on_error, 2
+
+	;Is anything selected?
+	if self.select_name eq '' then message, 'Nothing has been selected.'
+	
+	;Retrieve the information
+	name    = self.select_name
+	type    = self.select_type
+	scope   = self.select_scope
+	varname = self.select_varname
+	
+	;Return the name of the selected item.
+	return, name
 end
 
 
@@ -763,9 +816,11 @@ end
 ;                           If not provided, a file selection dialog box will appear.
 ;
 ; :Keywords:
+;       BLOCK:          in, optional, type=boolean, default=0
+;                       If set, the gui will block the command line.
 ;       GROUP_LEADER:   in, optional, type=integer
 ;                       The group leader of the file selection gui. Use only when
-;                           `FILENAME` undefined.
+;                           `FILENAME` undefined. Automatically sets `BLOCK`=1
 ;       _REF_EXTRA:     in, optional, type=any
 ;                       All keyword accepted by the CDF_READ::SET_CONFIG method are also
 ;                           accepted for keyword inheritance.
@@ -775,6 +830,7 @@ end
 ;-
 function MrCDF_Browser::Init, thisCDF, $
 GROUP_LEADER = group_leader, $
+BLOCK = block, $
 _REF_EXTRA = extra
 	compile_opt idl2
 
@@ -795,7 +851,9 @@ _REF_EXTRA = extra
 		;Object must be a valid MrCDF_File object.
 		if obj_valid(thisCDF) eq 0 $
 			then message, 'thisCDF is not a valid object reference.' $
-			else if isa(thisCDF, 'MrCDF_File') eq 0 then message, 'thisCDF must be a MrCDF_File object.'
+			else if obj_class(thisCDF) ne 'MRCDF_FILE' then message, 'thisCDF must be a MrCDF_File object.'
+		
+		oCDF = thisCDF
 ;---------------------------------------------------------------------
 ;FILENAME ////////////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
@@ -813,7 +871,8 @@ _REF_EXTRA = extra
 	self.oCDF = oCDF
 	
 	;Realize the GUI
-	self -> Create_GUI, group_leader
+	self -> Create_GUI, group_leader, BLOCK=block
+	if self.cancel then return, 0
 	
 	return, 1
 end
@@ -827,17 +886,25 @@ end
 ;                       The class definition structure.
 ;
 ; :Fields:
-;       TLB:                Top level base of the file- and variable-selection widgets
+;       CANCEL:             Indicates that the cancel button was pressed.
 ;       OCDF:               An object reference to a CDF_Read object
-;       ROOTID:             Widget ID of the wTree root
+;       SELECTION:          Name of the Attribute or Variable that is currently selected.
+;       TLB:                Top level base of the file- and variable-selection widgets
+;       TREEID:             Widget ID of the wTree root
 ;-
 pro MrCDF_Browser__define, class
 	compile_opt idl2
 	
 	class = { MrCDF_Browser, $
-	          tlb:       0L, $                 ;Top Level Base
-	          oCDF:      obj_new(), $          ;An object reference to a CDF_Read object
-	          selection: '', $
-	          treeID:    0L $
+	          tlb:            0L, $                ;Top Level Base
+	          oCDF:           obj_new(), $         ;An object reference to a CDF_Read object
+	          selection:      '', $
+	          cancel:         0B, $
+	          select_name:    '', $
+	          select_uname:   '', $
+	          select_type:    '', $
+	          select_scope:   '', $
+	          select_varname: '', $
+	          treeID:         0L $
 	        }
 end
