@@ -71,6 +71,7 @@
 ;       2014/01/30  -   Added the _OverloadBracketsRightSide method. - MRA
 ;       2015/02/06  -   _OverloadPrint/Help provide concise, well formatted output.
 ;                           Variable compression now possible. - MRA
+;       2015/04/23  -   Moved compression information to from _OverloadHelp to _OverloadPrint. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -84,17 +85,14 @@
 ;                               array of indices, or a one if the corresponding input
 ;                               argument was a subscript range.
 ;       SUBSCRIPT1:         in, required, type=string/integer
-;                           If a string is given, it is the name of the variable object whose
+;                           If a string is given, it is the name of the attribute whose
 ;                               for which the object reference is to be retrieved. An
-;                               integer value of 0 will return the file's object reference.
-;
-; :Keywords:
-;       DATASET:            in, optional, private, type=MrArray object
-;                           Used internally on a recursive call if `SUBSCRIPT1` is a string.
+;                               integer value of 0 will return the variable's object
+;                               reference.
 ;
 ; :Returns:
-;       RESULT:             in, required, type=numeric array
-;                           The subarray accessed by the input parameters.
+;       THEOBJ:             in, required, type=numeric array
+;                           The variable attribute object identified by the subscripts.
 ;-
 function MrCDF_Variable::_OverloadBracketsRightSide, isRange, subscript1
     compile_opt strictarr
@@ -166,13 +164,8 @@ function MrCDF_Variable::_OverloadHelp, varname
     ;Help string
     outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
                     FORMAT='(i3, 2x, a-0, 2x, a4, 2x, a14, 2x, a0)')
-                    
-    ;Get compression information
-    self -> GetProperty, COMPRESSION=compression, GZIP_LEVEL=gzip_level
-    compStr = '  Compression: ' + compression
-    if compression eq 'GZIP' then compStr += ' at level ' + strtrim(gzip_level, 2)
     
-    return, [[selfStr], [outStr], [compStr]]
+    return, [[selfStr], [outStr]]
 end
 
 
@@ -198,6 +191,11 @@ function MrCDF_Variable::_OverloadPrint
     
     ;Variable type
     var_type = self.zvariable ? 'zVar' : 'rVar'
+                    
+    ;Get compression information
+    self -> GetProperty, COMPRESSION=compression, GZIP_LEVEL=gzip_level
+    compStr = '  Compression: ' + compression
+    if compression eq 'GZIP' then compStr += ' at level ' + strtrim(gzip_level, 2)
     
     ;Help string
     outStr = string(self.number, self.name, var_type, self.cdf_type, dimStr, $
@@ -213,7 +211,7 @@ function MrCDF_Variable::_OverloadPrint
     for i = 0, nAttrs - 1 do attrHelp[0,i+1] = '    ' + allAttrs[i] -> _OverloadHelp(VARIABLE=self.name)
     
     ;Concatenate
-    outStr = [[outStr], [attrHelp]]
+    outStr = [[outStr], [compStr], [attrHelp]]
     return, outStr
 end
 
@@ -375,7 +373,7 @@ end
 ;                               sets `SINGLE_VALUE`=1.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
-;       REC_START:          in, optional, type=integer, defualt=0
+;       REC_START:          in, optional, type=integer, default=0
 ;                           Record at which to begin reading data.
 ;       SINGLE_VALUE:       in, optional, type=boolean, default=0
 ;                           Read a single value via the CDF_VarGet1 procedure. The
@@ -477,24 +475,33 @@ end
 ;   Get properties
 ;
 ; :Keywords:
-;       NAME:           out, optional, type=string
-;                       CDF variable name.
-;       NUMBER:         out, optional, type=integer
-;                       CDF variable number.
 ;       CDF_TYPE:       out, optional, type=string
 ;                       CDF data type. Posibilities are: 'CDF_BYTE',
 ;                           'CDF_CHAR', 'CDF_DOUBLE', 'CDF_REAL8', 'CDF_EPOCH', 
 ;                           'CDF_LONG_EPOCH', 'CDF_FLOAT', 'CDF_REAL4', 'CDF_INT1',
 ;                           'CDF_INT2', 'CDF_INT4', 'CDF_UCHAR', 'CDF_UINT1',
 ;                           'CDF_UINT2', 'CDF_UINT4'.
-;       NELEMENTS:      out, optional, type=long
-;                       Number of data elements.
-;       RECVAR:         out, optional, type=string
-;                       Record variance of the data.
+;       COMPRESSION:    out, optional, type=string
+;                       Name of the compression algorighm used on the variable
+;       DIMENSIONS:     out, optional, type=lonarr
+;                       Dimension sizes of the data.
 ;       DIMVAR:         out, optional, type=bytarr
 ;                       Dimensional variance of the data.
-;       DIM:            out, optional, type=lonarr
-;                       Dimension sizes of the data.
+;       GZIP_LEVEL:     out, optional, type=integer
+;                       If `COMPRESSION` is 'GZIP', this is the level of gzip
+;                           compression used.
+;       MAXREC:         out, optional, type=integer
+;                       Maximum number of records written to the variable (0-based).
+;       NAME:           out, optional, type=string
+;                       CDF variable name.
+;       NELEMENTS:      out, optional, type=long
+;                       Number of data elements. 
+;       NUMBER:         out, optional, type=integer
+;                       CDF variable number.
+;       RECVAR:         out, optional, type=string
+;                       Record variance of the data.
+;       ZVARIABLE:      out, optional, type=boolean
+;                       Indicates if the variable is a z-variable.
 ;-
 pro MrCDF_Variable::GetProperty, $
 CDF_TYPE=cdf_type, $
@@ -934,29 +941,29 @@ end
 ;       RECVAR:         Record variance of the CDF variable data.
 ;       ZVARIABLE:      Indicates that the variable is a z-variable, not an r-variable.
 ;-
-pro MrCDF_Variable__define
+pro MrCDF_Variable__define, class
     compile_opt strictarr
     
-    define = { MrCDF_Variable, $
-               inherits IDL_Object, $
-               parent:      obj_new(), $
-               attributes:  obj_new(), $
-               name:        '', $
-               number:      0L, $
-               quiet:       0B, $
-               compression: 0S, $
-               gzip_level:  ptr_new(), $
-               
-               ;VAR_INQ
-               cdf_type:   '', $
-               nelements:  0L, $
-               recvar:     '', $
-               dimvar:     ptr_new(), $
-               dim:        ptr_new(), $
-               zvariable:  0B, $
-               
-               ;VAR_INFO:
-               maxrec:     0L, $
-               padvalue:   ptr_new() $
+    class = { MrCDF_Variable, $
+              inherits IDL_Object, $
+              parent:      obj_new(), $
+              attributes:  obj_new(), $
+              name:        '', $
+              number:      0L, $
+              quiet:       0B, $
+              compression: 0S, $
+              gzip_level:  ptr_new(), $
+              
+              ;VAR_INQ
+              cdf_type:   '', $
+              nelements:  0L, $
+              recvar:     '', $
+              dimvar:     ptr_new(), $
+              dim:        ptr_new(), $
+              zvariable:  0B, $
+              
+              ;VAR_INFO:
+              maxrec:     0L, $
+              padvalue:   ptr_new() $
              }
 end

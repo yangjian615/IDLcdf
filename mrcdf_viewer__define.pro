@@ -263,7 +263,7 @@ SUM_PAGES=sum_pages
 	
 	;Name of the object
 	if n_elements(name) eq 0 $
-		then name = [varname, 'Legend: ' + varname]
+		then name = [varname, 'Legend: ' + varname] $
 		else if n_elements(name) eq 1 then name = [name[0], 'Legend: ' + name[0]]
 
 ;---------------------------------------------------------------------
@@ -585,7 +585,7 @@ NAME=name
 	
 	;Name of the object
 	if n_elements(name) eq 0 $
-		then name = [varname, 'Legend: ' + varname]
+		then name = [varname, 'Legend: ' + varname] $
 		else if n_elements(name) eq 1 then name = [name[0], 'Legend: ' + name[0]]
 
 ;---------------------------------------------------------------------
@@ -796,7 +796,7 @@ _REF_EXTRA=extra
 	;Scaletyp
 	if arg_present(log) then if oVar -> HasAttr(scaletyp) then begin
 		scaletype = oVar -> GetAttrValue(scaletyp)
-		log       = strupcases(scaletype) eq 'LOG'
+		log       = strupcase(scaletype) eq 'LOG'
 	endif
 
 	;Fillval

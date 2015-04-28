@@ -1,10 +1,10 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       MrCDF_Epoch_Type
+;       MrCDF_epoch2epoch
 ;
 ;*****************************************************************************************
-;   Copyright (c) 2014, Matthew Argall                                                   ;
+;   Copyright (c) 2015, Matthew Argall                                                   ;
 ;   All rights reserved.                                                                 ;
 ;                                                                                        ;
 ;   Redistribution and use in source and binary forms, with or without modification,     ;
@@ -33,21 +33,20 @@
 ;
 ; PURPOSE:
 ;+
-;   The purpose of this program is to determine the CDF epoch type of a given input.
-;   Known `CDF epoch types http://cdf.gsfc.nasa.gov/html/leapseconds.html` include::
-;       EPOCH
-;       EPOCH16
-;       CDF_TIME_TT2000
+;   Convert from one CDF epoch type to another.
 ;
 ; :Categories:
-;       Time Utility
+;   CDF, Time Utility
 ;
 ; :Params:
 ;   T_EPOCH:        in, required, type=double/dcomplex/long64
-;                   A[n array of] CDF times, either EPOCH, EPOCH16, or CDF_TIME_TT2000.
+;                   CDF time(s), either EPOCH, EPOCH16, or CDF_TIME_TT2000.
+;   DEST_TYPE:      in, required, type=string
+;                   CDF epoch datatype to which `T_EPOCH` is converted. Choices are
+;                     EPOCH, EPOCH16, or CDF_TIME_TT2000.
 ;
 ; :Returns:
-;   EPOCH_TYPE:     Will return the type of the given CDF epoch time contained in `T_EPOCH`
+;   T_OUT:          `T_EPOCH` converted to the requested CDF epoch type.
 ;
 ; :Author:
 ;   Matthew Argall::
@@ -59,24 +58,37 @@
 ;
 ; :History:
 ;   Modification History::
-;       Written by  -   Matthew Argall 12 February 2012
-;       2014/01/19  -   For readability, use type names to check epoch values. - MRA
-;       2014/02/03  -   Renamed to MrCDF_Epoch_Type from MrCDF_Epoch. - MRA
+;       2015-04-29  -   Written by Matthew Argall
 ;-
-function MrCDF_Epoch_Type, t_epoch
+function MrCDF_epoch2epoch, t_epoch, dest_type
 	compile_opt strictarr
 	on_error, 2
 
-	;Get the data-type of T_EPOCH
-	t_type = size(t_epoch, /TNAME)
+	;Determine the epoch type
+	;  - If source and destination types are the same, return input.
+	src_type = MrCDF_Epoch_Type(t_epoch)
+	if strupcase(dest_type) eq src_type then return, t_epoch
 
-	;Pick the epoch type.
-	case t_type of
-		'DOUBLE':   epoch_type = 'CDF_EPOCH'
-		'DCOMPLEX': epoch_type = 'CDF_EPOCH16'
-		'LONG64':   epoch_type = 'CDF_TIME_TT2000'
-		else: message, 'Unknown Epoch Type: "' + t_type + '".'
+	;Breakdown the input.
+	case src_type of
+		'CDF_EPOCH':       cdf_epoch,   t_epoch, yr, mo, day, hr, mnt, sec, milli, /BREAKDOWN_EPOCH
+		'CDF_EPOCH16':     cdf_epoch16, t_epoch, yr, mo, day, hr, mnt, sec, milli, micro, nano, pico, /BREAKDOWN_EPOCH
+		'CDF_TIME_TT2000': cdf_tt2000,  t_epoch, yr, mo, day, hr, mnt, sec, milli, micro, nano, /BREAKDOWN_EPOCH
+		else: message, 'Unknown input epoch type: "' + src_type + '".'
+	endcase
+	
+	;Make sure micro, nono, and pico are defined
+	if n_elements(micro) eq 0 then micro = 0
+	if n_elements(nano)  eq 0 then nano  = 0
+	if n_elements(pico)  eq 0 then pico  = 0
+	
+	;Build up the output
+	case dest_type of
+		'CDF_EPOCH':   cdf_epoch,   t_out, mo, day, hr, mnt, sec, milli, /COMPUTE_EPOCH
+		'CDF_EPOCH16': cdf_epoch16, t_out, mo, day, hr, mnt, sec, milli, micro, nono, pico, /COMPUTE_EPOCH
+		'CDF_TT2000':  cdf_tt2000,  t_out, mo, day, hr, mnt, sec, milli, micro, nono, /COMPUTE_EPOCH
+		else: message, 'Unknown output epoch type: "' + dest_type + '".'
 	endcase
 
-	return, epoch_type
+	return, t_out
 end

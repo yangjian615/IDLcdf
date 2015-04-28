@@ -44,7 +44,7 @@
 ;       IDL> .r MrCDF_Epoch_Encode
 ;
 ; :Params:
-;   T_EPOCH:            in, required, type=double, dcomplex, long64
+;   T_EPOCH:            in, required, type=double\, dcomplex\, long64
 ;                       A[n array of] CDF times to be turned into strings. Accepted types
 ;                           are::
 ;                               EPOCH               -- Double
@@ -52,7 +52,7 @@
 ;                               CDF_TIME_TT2000     -- Long64
 ;
 ; :Keywords:
-;   EPOCH:              in. optional, type=int, default=0
+;   EPOCH:              in, optional, type=int, default=0
 ;                       The format of the output::
 ;                           0 - dd-mmm-yyyy hh:mm:ss.ccc                -- CDF_EPOCH
 ;                             - dd-mmm-yyyy hh:mm:ss.ccc.uuu.nnn.ppp    -- CDF_EPOCH16
@@ -88,7 +88,7 @@
 ;       matthew.argall@wildcats.unh.edu
 ;
 ; :History:
-;	Modification History::
+;   Modification History::
 ;       Written by  -   Matthew Argall 12 February 2012
 ;       2014/02/03  -   Renamed to MrCDF_Epoch_Encode from CDF_Epoch_Encode. - MRA
 ;-

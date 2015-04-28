@@ -128,10 +128,12 @@
 ;                           and Delete/Del* methods. The Close method now purges object
 ;                           properties. DEPEND_0 params made into keywords in Read method.
 ;                           Added SHOW keyword to Get*Names methods. - MRA
+;       2015/04/27  -   Global and variable attributes can now be accessed via
+;                           _OverloadBracketsRightSide. Added the BOUNDS keyword to ::READ. - MRA
 ;-
 ;*****************************************************************************************
 ;+
-;   Obtain a variable's object reference
+;   Obtain a attribute's or a variable's object reference
 ;
 ; :Params:
 ;       ISRANGE:            in, required, type=intarr
@@ -144,51 +146,84 @@
 ;                           If a string is given, it is the name of the variable object whose
 ;                               for which the object reference is to be retrieved. An
 ;                               integer value of 0 will return the file's object reference.
-;
-; :Keywords:
-;       DATASET:            in, optional, private, type=MrArray object
-;                           Used internally on a recursive call if `SUBSCRIPT1` is a string.
+;       SUBSCRIPT2:         in, required, type=string/integer
+;                           If `SUBSCRIPT1` is a variable name, then set this equal to
+;                               the name of one of its variable attributes. The object
+;                               reference to the variable attribute will be returned.
 ;
 ; :Returns:
-;       RESULT:             in, required, type=numeric array
-;                           The subarray accessed by the input parameters.
+;       THEOBJ:             The object reference identified by the given subscripts.
 ;-
-function MrCDF_File::_OverloadBracketsRightSide, isRange, subscript1
-    compile_opt strictarr
-    
-    ;Error handling
-    catch, the_error
-    if the_error ne 0 then begin
-        catch, /cancel
-        void = cgErrorMsg()
-        return, -1
-    endif
-    
-    ;Pick the proper data set to alter
-    if n_elements(subscript1) ne 1 then $
-        message, 'The first subscript must be a scalar.'
-    
-    ;Only one subscript can be given    
-    nSubs = n_elements(isRange)
-    if nSubs ne 1 then message, 'Only one subscript is accepted.'
+function MrCDF_File::_OverloadBracketsRightSide, isRange, subscript1, subscript2
+	compile_opt strictarr
 
-    ;Variable name.    
-    if MrIsA(subscript1, 'STRING') then begin
-        tf_has = self -> HasVar(subscript1, OBJECT=theObj)
-        if tf_has eq 0 then message, 'Variable "' + subscript1 + '" not found.'
-    
-    ;Variable index
+	;Error handling
+	catch, the_error
+	if the_error ne 0 then begin
+		catch, /cancel
+		void = cgErrorMsg()
+		return, -1
+	endif
+
+	;Pick the proper data set to alter
+	if n_elements(subscript1) ne 1 then $
+		message, 'The first subscript must be a scalar.'
+
+	;Max of two subscripts allowed    
+	nSubs = n_elements(isRange)
+	if nSubs gt 2 then message, 'A maximum of two subscripts is accepted.'
+	if nSubs eq 2 then begin
+		if ~MrIsA(subscript2, 'String', /SCALAR) then $
+			message, 'The second subscript must be a scalar string.'
+	endif
+
+;-----------------------------------------------------
+; Name was Given \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+	if MrIsA(subscript1, 'STRING') then begin
+
+	;-----------------------------------------------------
+	; Variable Name \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+	;-----------------------------------------------------
+		;Was a variable name given?
+		tf_has = self -> HasVar(subscript1, OBJECT=theObj)
+
+		;Variable exists
+		if tf_has then begin
+			;Variable attribute name also given?
+			if nSubs eq 2 then begin
+				tf_has = theObj -> HasAttr(subscript2, OBJECT=theObj)
+				if ~tf_has then $
+					message, string(FORMAT='(%"Variable \"%s\" does not have attribute \"%s\"")', $
+					                subscript1, subscript2)
+			endif
+	
+	;-----------------------------------------------------
+	; Attribute Name \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+	;-----------------------------------------------------
+		endif else begin
+			tf_has = self -> HasAttr(subscript1, OBJECT=theObj)
+			
+			;Did we find the attribute?
+			if tf_has && nSubs eq 2 then message, 'Second subscripts not allowed with attributes.'
+			if ~tf_has then $
+				message, 'No variable or attribute with name: "' + subscript1 + '".'
+		endelse
+
+;-----------------------------------------------------
+; Integer Given \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     endif else if MrIsA(subscript1, /INTEGER) then begin
-        ;If the scalar index 0 was given, return the SELF reference
-        if subscript1 ne 0 then message, '0 is the only integer 0 is accepted as a subscript.'
-        theObj = self
-        
-    endif else begin
-        message, 'First subscript must be a string or 0.'
-    endelse
-    
-    ;Return the variable object?
-    return, theObj
+		;If the scalar index 0 was given, return the SELF reference
+		if subscript1 ne 0 then message, '0 is the only integer accepted as a subscript.'
+		theObj = self
+	
+	endif else begin
+		message, 'First subscript must be a string or 0.'
+	endelse
+
+	;Return the variable object?
+	return, theObj
 end
 
 
@@ -920,7 +955,7 @@ end
 ;                           Entry number to be deleted. If not present, then entire
 ;                               attribute is deleted.
 ;-
-pro MrCDF_File::DelGlobalAttr, gAttrName, entrynNum
+pro MrCDF_File::DelGlobalAttr, gAttrName, entryNum
     compile_opt strictarr
     on_error, 2
 
@@ -1159,10 +1194,6 @@ end
 ; :Keywords:
 ;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `GATTRVALUE`.
-;       GENTRYNUM:          in, optional, type=long
-;                           The global entry number of the value to be returned. It
-;                               is an index into the list of values associated with
-;                               `GATTRIBUTE`. The default is to return all values.
 ;
 ; :Returns:
 ;       GATTRVALUE:         Value of the global attribute.
@@ -1338,7 +1369,7 @@ end
 ;                           Name of the variable attribute whose value is to be returned.
 ;
 ; :Keywords:
-;       DATATYPE:           out, optional, type=string
+;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of `GATTRVALUE`.
 ;       FOLLOW_PTR:         in, optional, type=boolean, default=0
 ;                           If `ATTRVALUE` points to a variable, then follow the pointer,
@@ -1408,7 +1439,7 @@ end
 ;                           Number of records to be read.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
-;       REC_START:          in, optional, type=integer, defualt=0
+;       REC_START:          in, optional, type=integer, default=0
 ;                           Record at which to begin reading data.
 ;       SINGLE_VALUE:       in, optional, type=boolean, default=0
 ;                           Read a single value via the CDF_VarGet1 procedure. The
@@ -1492,11 +1523,11 @@ end
 ;                           CDF file identifier.
 ;       MAJORITY:           out, optional, type=string
 ;                           Majority using in the file: {"ROW_MAJOR" | "COL_MAJOR"}
-;       NATTS:              out, optional, type=integer
+;       NATTRS:             out, optional, type=integer
 ;                           Total number of attributes within the file
-;       NGATTS:             out, optional, type=integer
+;       NGATTRS:            out, optional, type=integer
 ;                           Number of global attributes within the file
-;       NVATTS:             out, optional, type=integer
+;       NVATTRS:            out, optional, type=integer
 ;                           Number of variable attributes within the file
 ;       NVARS:              out, optional, type=integer
 ;                           Total number of variables within the file
@@ -1719,7 +1750,6 @@ end
 ;       VALIDATE:           in, optional, type=boolean, default=0
 ;                           Set equal to 1 to turn file validation on when opening a
 ;                               file. File validation only occurs in IDL 8.0+.
-;       _REF_EXTRA:         in, optinal, type=any
 ;-
 pro MrCDF_File::Open, filename, $
 BACKWARD_COMPATIBLE = backward_compatible, $
@@ -1996,13 +2026,15 @@ end
 ;   method.
 ;
 ; :Params:
-;       VARIABLE:           in, required, type=string/object
+;       VARNAME:            in, required, type=string/object
 ;                           Name or CDF_Variable object of the variable to which the
 ;                               attribute value will be written.
-;       VALUE:              in, required, type="CDF_DOUBLE"
-;                           Value to be written to the attribute.
 ;
 ; :Keywords:
+;       BOUNDS:             in, optional, type=string, default=''
+;                           A string representing the array bounds to be returned. Each
+;                               dimension of the returned data can have a
+;                               [start:stop:stride] indicating the records to be read.
 ;       COUNT:              in, optional, type=intarr
 ;                           Vector containing the counts to be used when reading each
 ;                               `VALUE`. The default is to read each record, taking
@@ -2022,7 +2054,7 @@ end
 ;                           Number of records to be read.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
-;       REC_START:          in, optional, type=integer, defualt=0
+;       REC_START:          in, optional, type=integer, default=0
 ;                           Record at which to begin reading data.
 ;       REC_END:            in, optional, type=integer
 ;                           If set, the last record to read. `REC_COUNT` will be set
@@ -2039,6 +2071,22 @@ end
 ;                               must match that of DEPEND_0.
 ;       CDF_TYPE:           out, optional, type=string
 ;                           CDF datatype of the variable being read.
+;       DEPEND_0:           out, optional, type=any
+;                           If the variable `VARNAME` has a `DEPEND_0` attribute, then
+;                               set this keyword equal to a named variable into which the
+;                               data for that attribute is returned.
+;       DEPEND_1:           out, optional, type=any
+;                           If the variable `VARNAME` has a `DEPEND_1` attribute, then
+;                               set this keyword equal to a named variable into which the
+;                               data for that attribute is returned.
+;       DEPEND_2:           out, optional, type=any
+;                           If the variable `VARNAME` has a `DEPEND_2` attribute, then
+;                               set this keyword equal to a named variable into which the
+;                               data for that attribute is returned.
+;       DEPEND_3:           out, optional, type=any
+;                           If the variable `VARNAME` has a `DEPEND_3` attribute, then
+;                               set this keyword equal to a named variable into which the
+;                               data for that attribute is returned.
 ;       FILLVALUE:          out, optional, type=any
 ;                           Value used as a filler for missing data.
 ;       PADVALUE:           out, optional, type=any
@@ -2048,6 +2096,7 @@ end
 ;-
 function MrCDF_File::Read, varName, $
 ;INPUT
+BOUNDS=bounds, $
 COUNT=count, $
 INTERVAL=interval, $
 OFFSET=offset, $
@@ -2078,8 +2127,11 @@ PADVALUE=padvalue
     
     ;Was a time range given?
     time = keyword_set(time)
-    if n_elements(pattern) gt 0 then time = 1
-    if MrIsA(rec_start, 'STRING') || MrIsA(rec_end, 'STRING') then time = 1
+    if n_elements(bounds)  eq 0 then bounds  = ''
+    if n_elements(pattern) eq 0 then pattern = ''
+    
+    ;Dependencies
+    if pattern ne '' || MrIsA(rec_start, 'STRING') || MrIsA(rec_end, 'STRING') then time = 1
     if time && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%z"
     
     ;Get the variable object
@@ -2090,7 +2142,6 @@ PADVALUE=padvalue
 ;-----------------------------------------------------
 ; Time Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-
     ;Flag indicating that the variable given represents time.
     isTime = 0
     if time eq 1 then begin
@@ -2143,6 +2194,33 @@ PADVALUE=padvalue
         endif
 
 ;-----------------------------------------------------
+; Bounds? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+    endif else if bounds ne '' then begin
+        ;Form the dimension sizes of the variable
+        varObj -> GetProperty, MAXREC=maxrec, DIMENSIONS=dim
+        nDims = n_elements(dim)
+        dims  = [dim, maxrec + 1]
+        if nDims eq 1 && dim eq 0 then nDims = 0
+
+        ;Get the records to be read.
+        indexing      = MrArray_Bounds(dims, bounds, /DIMENSIONS, /COUNT, SINGLE=single)
+        rec_start_out = reform(indexing[nDims, 0])
+        rec_count     = reform(indexing[nDims, 1])
+        rec_interval  = reform(indexing[nDims, 2])
+        
+        ;Cannot do single dimension indexing (have not tried).
+        if single and nDims gt 0 then $
+            message, 'Invalid number of dimensions in BOUNDS.' 
+        
+        ;Dimensions to read
+        if nDims gt 0 then begin
+            offset   = reform(indexing[0:nDims-1, 0])
+            count    = reform(indexing[0:nDims-1, 1])
+            interval = reform(indexing[0:nDims-1, 2])
+        endif
+
+;-----------------------------------------------------
 ; Record Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     endif else if n_elements(rec_end) gt 0 then begin
@@ -2159,6 +2237,7 @@ PADVALUE=padvalue
         varObj -> GetProperty, MAXREC=maxrec
         rec_count = maxrec + 1 - rec_start_out
     endif
+    if n_elements(rec_interval) eq 0 then rec_interval  = 1
 
     ;Get the data
     if isTime eq 0 then begin
@@ -2167,13 +2246,13 @@ PADVALUE=padvalue
                                   REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
                                   FILLVALUE=fillvalue, PADVALUE=padvalue)
     endif else begin
-        data = depend_0[*,rec_start_out:rec_start_out+rec_count-1]
+        data = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
     endelse
     
     ;DEPEND_0
     if arg_present(depend_0) then begin
         if n_elements(depend_0) gt 0 then begin
-            depend_0 = depend_0[*,rec_start_out:rec_start_out+rec_count-1]
+            depend_0 = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
         endif else begin
             tf_dep0 = varObj -> HasAttr('DEPEND_0', OBJECT=attrObj)
             if tf_dep0 then begin 
@@ -2444,7 +2523,7 @@ end
 ;   Use the GetGEntryMask method to determine which are defined.
 ;
 ; :Params:
-;       ATTRIBUTE:          in, required, type=string/object
+;       GATTRNAME:          in, required, type=string/object
 ;                           Name or CDF_Attribute object of an attribute whose value
 ;                               is to be written.
 ;       VALUE:              in, required, type=valid cdf type
@@ -2457,7 +2536,7 @@ end
 ;                           If set, `VALUE` will be written as a datatype "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE" Can
 ;                               be a vector the same lenth as `VALUE`.
-;       GENTRYNUM:          in, optional, type=integer, defualt=maxGEntry+1
+;       GENTRYNUM:          in, optional, type=integer, default=maxGEntry+1
 ;                           Either a scalar or vector of global entry numbers. If a scalar,
 ;                               then the element(s) of `VALUE` will be stored contiguously
 ;                               starting at the given value. If a vector, it must be the
@@ -2604,7 +2683,7 @@ end
 ;                               2 or 'Huffman'
 ;                               3 or 'Adaptive Huffman'
 ;                               5 or 'GZIP'
-;       COUNT:              in, optional, type=intarr, defualt=dimesnions of `DATA`.
+;       COUNT:              in, optional, type=intarr, default=dimesnions of `DATA`.
 ;                           Vector containing the counts to be used when writing each
 ;                               value. Does not have to be the same size as `DIMENSION`.
 ;       GZIP_LEVEL:         in, optional, type=integer, default=5
@@ -2617,11 +2696,9 @@ end
 ;                           Array indices within the specified record(s) at which to
 ;                               begin writing. OFFSET is a 1-dimensional array
 ;                               containing one element per CDF dimension.
-;       REC_COUNT:          in, optional, type=long, default=maxrec+1
-;                           Number of records to be read.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records being written when writing multiple records.
-;       REC_START:          in, optional, type=integer, defualt=0
+;       REC_START:          in, optional, type=integer, default=0
 ;                           Record at which to begin writing data.
 ;-
 pro MrCDF_File::WriteVar, variable, data, $

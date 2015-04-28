@@ -76,10 +76,12 @@ BLOCK=block
 	
 	;
 	; General layout:
-	;    TREE     TEXT
-	;             LABEL
-	;             BUTTON TEXT
-	;      OK  CANCEL
+	;   ___________________________
+	;   | TREE   |  TEXT          |
+	;   |        |  LABEL         |
+	;   |        |  BUTTON TEXT   |
+	;   |   OK  CANCEL            |
+	;   |_________________________|
 	;
 
 ;---------------------------------------------------------------------
@@ -108,16 +110,17 @@ BLOCK=block
 
 	;Adjust the width of the widget to fit the width of the longest variable name
 	vnames = self.oCDF -> GetVarNames(COUNT=nVars)
-	varwidth = max(strlen(vnames) + 10) * !d.x_ch_size
+	varlen = max(strlen(vnames) + 10)
 	
-	;Determine the height
-	ysize = (40 < nVars) * !d.y_ch_size
+	;Determine the height and width
+	ysize = (40 > nVars)  * !d.y_ch_size
+	xsize = (30 > 10+varlen) * !d.x_ch_size
 
 	;Create the root of the widget tree.
 	self.oCDF -> GetProperty, FILENAME=filename
 	self.treeID = widget_tree(treeBase, /FOLDER, /EXPANDED, $
 	                          VALUE=filename, UNAME='TREEROOT', $
-	                          XSIZE=varwidth, YSIZE=nVars*!d.y_ch_size)
+	                          XSIZE=xsize, YSIZE=ysize)
 
 ;---------------------------------------------------------------------
 ;Create Info Box /////////////////////////////////////////////////////
@@ -128,7 +131,7 @@ BLOCK=block
 	
 	;Put an info box next to the tree
 	infoID = widget_text(infoBase, /WRAP, UNAME='InfoBox', FRAME=2, /SCROLL, $
-	                     XSIZE=max(strlen(vnames)), YSIZE=nVars)
+	                     XSIZE=(60 > 2*varlen), YSIZE=nVars)
 	
 	;Create a label
 	labelID = widget_label(infoBase, UNAME='VARLABEL', VALUE='Variable Name for Import:')
@@ -255,13 +258,15 @@ end
 ;               Variable Attribute
 ;
 ; :Params:
+;       PARENTID:       in, required, type=long
+;                       Widget ID of the parent tree node.
 ;       ATTRNAME:       in, required, type=string
 ;                       Name of the attribute.
-;       OPARENT:        in, required, type=object
-;                       Parent object of the attribute, either the CDF file object or
-;                           one of its child variable objects.
-;       PARENTID:       in, required, type=long
-;                       Widget ID of the tree node associated with `OPARENT`.
+;
+; :Keywords:
+;       VARNAME:        in, optional, type=string
+;                       If `ATTRNAME` is a variable attribute, then this is
+;                           the name of the variable it is associated with.
 ;-
 pro MrCDF_Browser::Create_Tree_Attr, parentID, attrName, $
 VARNAME=varname
@@ -299,7 +304,9 @@ end
 ;           Variable
 ;
 ; :Params:
-;       VNAME:          in, required, type=string
+;       PARENTID:       in, required, type=long
+;                       Widget ID of the parent tree node.
+;       VARNAME:        in, required, type=string
 ;                       The variable name to be attached to the Tree root.
 ;-
 pro MrCDF_Browser::Create_Tree_Var, parentID, varName

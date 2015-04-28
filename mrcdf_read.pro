@@ -41,10 +41,10 @@
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
-;       Morse Hall, Room 113
+;       Morse Hall, Room 348
 ;       8 College Rd.
 ;       Durham, NH, 03824
-;       matthew.argall@wildcats.unh.edu
+;       matthew.argall@unh.edu
 ;
 ; :History:
 ;   Modification History::
@@ -56,11 +56,10 @@
 ;   method.
 ;
 ; :Params:
-;       VARIABLE:           in, required, type=string/object
-;                           Name or CDF_Variable object of the variable to which the
-;                               attribute value will be written.
-;       VALUE:              in, required, type="CDF_DOUBLE"
-;                           Value to be written to the attribute.
+;       FILENAME:           in, required, type=string
+;                           Name of the CDF file from which data is read.
+;       VARNAME:            in, required, type=string/object
+;                           Name of the variable whose data will be read.
 ;
 ; :Keywords:
 ;       BOUNDS:             in, out, optional, type=string, default=''
@@ -98,7 +97,7 @@
 ;                           Number of records to be read.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
-;       REC_START:          in, optional, type=integer, defualt=0
+;       REC_START:          in, optional, type=integer, default=0
 ;                           Record at which to begin reading data.
 ;       REC_END:            in, optional, type=integer
 ;                           If set, the last record to read. `REC_COUNT` will be set
@@ -217,10 +216,10 @@ PADVALUE=padvalue
             cdf_attget_entry, cdfID, 'DEPEND_0', varname, entryType, tVarName, tf_has
             
             ;Does the attribute exist?
-            if tf_has eq 0 then begin
-                message, 'No DEPEND_0 attribute exists for variable "' + varname + '". Reading all records.', /INFORMATIONAL
-            endif else begin
+            if tf_has then begin
                 cdf_varget, cdfID, tVarName, depend_0
+            endif else begin
+                message, 'No DEPEND_0 attribute exists for variable "' + varname + '". Reading all records.', /INFORMATIONAL
             endelse
         endelse
 
@@ -255,7 +254,7 @@ PADVALUE=padvalue
         ;Form the dimension sizes of the variable
         nDims = n_elements(var_inq.dim)
         dims = [var_inq.dim, var_info.maxrec + 1]
-        if nDims eq 1 and var_inq.dim eq 0 then nDims = 0
+        if nDims eq 1 && var_inq.dim eq 0 then nDims = 0
 
         ;Get the records to be read.
         indexing      = MrArray_Bounds(dims, bounds, /DIMENSIONS, /COUNT, SINGLE=single)
@@ -269,9 +268,9 @@ PADVALUE=padvalue
         
         ;Dimensions to read
         if nDims gt 1 then begin
-            offset        = reform(indexing[0:nDims-1, 0])
-            count         = reform(indexing[0:nDims-1, 1])
-            interval      = reform(indexing[0:nDims-1, 2])
+            offset   = reform(indexing[0:nDims-1, 0])
+            count    = reform(indexing[0:nDims-1, 1])
+            interval = reform(indexing[0:nDims-1, 2])
         endif
 ;-----------------------------------------------------
 ; Record Interval \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\

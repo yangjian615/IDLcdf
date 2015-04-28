@@ -137,22 +137,18 @@ end
 
 
 ;+
-;   The purpose of this method is to find objects by their file name.
+;   The purpose of this method is to find objects by their name.
 ;
 ; :Params:
-;       FILENAME:           in, optional, type=string/strarr
-;                           Return the objects associated with these filenames. If this
-;                               keyword is present, `OBJECT` is ignored.
+;       SEARCHSTRING:       in, optional, type=string/strarr
+;                           Return the objects with names that match this string.
 ;
 ; :Keywords:
 ;       COUNT:              out, optional, type=integer
 ;                           Number of files found.
-;       ROOT_NAME:          in, optional, type=boolean, default=0
-;                           If set, only the file name will be used for the search and
-;                               directories will be ignored.
 ;       FOLD_CASE:          in, optional, type=boolean, default=0
 ;                           If set, the search will be case-insensitive.
-;       REGEX:              in, optional, type=boolean, defualt=0
+;       REGEX:              in, optional, type=boolean, default=0
 ;                           If set, a regular expression search will be performed. The
 ;                               default is to use StrMatch.
 ;       _REF_EXTRA:         in, optional, type=any

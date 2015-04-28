@@ -1,10 +1,10 @@
 ; docformat = 'rst'
 ;
 ; NAME:
-;       MrCDF_Epoch_Type
+;       MrCDF_Resolve_All
 ;
 ;*****************************************************************************************
-;   Copyright (c) 2014, Matthew Argall                                                   ;
+;   Copyright (c) 2015, Matthew Argall                                                   ;
 ;   All rights reserved.                                                                 ;
 ;                                                                                        ;
 ;   Redistribution and use in source and binary forms, with or without modification,     ;
@@ -33,50 +33,54 @@
 ;
 ; PURPOSE:
 ;+
-;   The purpose of this program is to determine the CDF epoch type of a given input.
-;   Known `CDF epoch types http://cdf.gsfc.nasa.gov/html/leapseconds.html` include::
-;       EPOCH
-;       EPOCH16
-;       CDF_TIME_TT2000
-;
+;   Resolve all dependencies of the MrCDF routines.
+;   
 ; :Categories:
-;       Time Utility
-;
-; :Params:
-;   T_EPOCH:        in, required, type=double/dcomplex/long64
-;                   A[n array of] CDF times, either EPOCH, EPOCH16, or CDF_TIME_TT2000.
-;
-; :Returns:
-;   EPOCH_TYPE:     Will return the type of the given CDF epoch time contained in `T_EPOCH`
+;    CDF, Script
 ;
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
 ;       Morse Hall, Room 348
-;       8 Collge Rd.
+;       8 College Rd.
 ;       Durham, NH, 03824
 ;       matthew.argall@unh.edu
 ;
 ; :History:
-;   Modification History::
-;       Written by  -   Matthew Argall 12 February 2012
-;       2014/01/19  -   For readability, use type names to check epoch values. - MRA
-;       2014/02/03  -   Renamed to MrCDF_Epoch_Type from MrCDF_Epoch. - MRA
+;   Change History::
+;       2015/04/28  -   Written by Matthew Argall
 ;-
-function MrCDF_Epoch_Type, t_epoch
-	compile_opt strictarr
+pro MrCDF_Resolve_All
+	compile_opt idl2
 	on_error, 2
 
-	;Get the data-type of T_EPOCH
-	t_type = size(t_epoch, /TNAME)
+;-----------------------------------------------------
+; Resolve Routines \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
 
-	;Pick the epoch type.
-	case t_type of
-		'DOUBLE':   epoch_type = 'CDF_EPOCH'
-		'DCOMPLEX': epoch_type = 'CDF_EPOCH16'
-		'LONG64':   epoch_type = 'CDF_TIME_TT2000'
-		else: message, 'Unknown Epoch Type: "' + t_type + '".'
-	endcase
+	;Routines to be resolved
+	class = ['mrcdf_attribute', $
+	         'mrcdf_browser', $
+	         'mrcdf_container', $
+	         'mrcdf_file', $
+	         'mrcdf_variable', $
+	         'mrcdf_viewer']
+	pros  = ['mrcdf_file_examples', $
+	         'mrcdf_epoch']
+	funs  = ['mrcdf_castdatatype', $
+	         'mrcdf_epoch_compare', $
+	         'mrcdf_epoch_encode', $
+	         'mrcdf_epoch_parse', $
+	         'mrcdf_epoch_type', $
+	         'mrcdf_epoch2epoch', $
+	         'mrcdf_epoch2sse', $
+	         'mrcdf_read', $
+	         'mrcdf_sse2epoch', $
+	         'mrcdf_varnames', $
+	         'mrcdfcmpversion']
 
-	return, epoch_type
+	;Resolve routines
+	resolve_all, CLASS             = class, $
+	             RESOLVE_FUNCTION  = funs, $
+	             RESOLVE_PROCEDURE = pros
 end
