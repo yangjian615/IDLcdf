@@ -49,6 +49,7 @@
 ; :History:
 ;   Modification History::
 ;       2014/08/22  -   Written by Matthew Argall
+;       2015/04/30  -   A CDF ID can be provided instead of a file name. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -56,8 +57,9 @@
 ;   method.
 ;
 ; :Params:
-;       FILENAME:           in, required, type=string
-;                           Name of the CDF file from which data is read.
+;       FILE:               in, required, type=string/long
+;                           The CDF identifier retured by CDF_Open() of the name of a CDF
+;                               file from which data is read.
 ;       VARNAME:            in, required, type=string/object
 ;                           Name of the variable whose data will be read.
 ;
@@ -121,8 +123,10 @@
 ;                           Value used to pad the data when more data is read than what
 ;                               exists in the file. It is possible that this value does
 ;                               not exist.
+;       VALIDATE:           in, optional, type=boolean, default=0
+;                           If set, the CDF file will be validated when opened.
 ;-
-function MrCDF_Read, filename, varName, $
+function MrCDF_Read, file, varName, $
 ;INPUT
 BOUNDS=bounds, $
 COUNT=count, $
@@ -153,7 +157,7 @@ PADVALUE=padvalue
         catch, /CANCEL
         
         ;Close the file
-        if n_elements(cdfID) gt 0 then cdf_close, cdfID
+        if n_elements(cdfID) gt 0 && tf_opened then cdf_close, cdfID
     
         ;Turn file validation back on
         if MrCmpVersion('8.0') le 0 then $
@@ -180,14 +184,26 @@ PADVALUE=padvalue
 ;-----------------------------------------------------
 ; Open File & Get MetaData \\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-    ;Validate the file?
-    if validate then if MrCmpVersion('8.0') le 0 $
-        then cdf_set_validate, /YES $
-        else cdf_set_validate, /NO
 
-    ;Open the file, if it exists
-    if file_test(filename) eq 0 then message, 'File not found: ' + filename
-    cdfID = cdf_open(filename)
+    ;Was a CDF ID given
+    if MrIsA(filename, 'LONG') then begin
+        tf_opened = 0B
+        cdfID     = file
+    
+    ;Filename given
+    endif else begin
+        ;Validate the file?
+        if validate then if MrCmpVersion('8.0') le 0 $
+            then cdf_set_validate, /YES $
+            else cdf_set_validate, /NO
+
+        ;Open the file, if it exists
+        if file_test(file) eq 0 then message, 'File not found: ' + file
+        cdfID = cdf_open(file)
+        
+        ;Indicate file was opened here
+        tf_opened = 1B
+    endif
     
     ;Get information about the variable
     var_inq  = cdf_varinq(cdfID, varName)
@@ -346,7 +362,7 @@ PADVALUE=padvalue
     endif
     
     ;Close the data file
-    cdf_close, cdfID
+    if tf_opened then cdf_close, cdfID
     
     ;Turn file validation back on
     if MrCmpVersion('8.0') le 0 then $
