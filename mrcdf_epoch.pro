@@ -467,8 +467,8 @@ EPOCH_TYPE=epoch_type
 	;If neither keyword was given, try to determine action.
 	if compute_epoch + breakdown_epoch eq 0 then begin
 		case 1 of
-			n_elements(t_epoch) eq 0 && n_elements(year): compute_epoch   = 1
-			n_elements(t_epoch) gt 0 && n_elements(year): breakdown_epoch = 1
+			n_elements(t_epoch) eq 0 && n_elements(year) gt 0: compute_epoch   = 1
+			n_elements(t_epoch) gt 0 && n_elements(year) eq 0: breakdown_epoch = 1
 			else: message, 'Confusing inputs. Must specify /BREAKDOWN_EPOCH, or /COMPUTE_EPOCH.'
 		endcase
 	endif
@@ -483,10 +483,6 @@ EPOCH_TYPE=epoch_type
 		                                         (MrCDFCmpVersion('3.4.0.0') le 0) ? 'CDF_TIME_TT2000' : $
 		                                        'CDF_EPOCH'
 	endcase
-
-	;Get the library version. Vectorized processing was introduced in CDF verion 3.4.
-	;For previous versions, we must use a loop
-	cdf_lib_info, VERSION=version, RELEASE=release, INCREMENT=increment, SUBINCREMENT=subincrement
 
 ;---------------------------------------------------------------------
 ;Vectorized Versions /////////////////////////////////////////////////
