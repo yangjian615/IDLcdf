@@ -2133,7 +2133,7 @@ PADVALUE=padvalue
     ;Dependencies
     if pattern ne '' || MrIsA(rec_start, 'STRING') || MrIsA(rec_end, 'STRING') then time = 1
     if time && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%z"
-    
+
     ;Get the variable object
     tf_has = self -> HasVar(varName, OBJECT=varObj)
     if tf_has eq 0 then $
@@ -2154,7 +2154,7 @@ PADVALUE=padvalue
         if max(cdf_type eq ['CDF_EPOCH', 'CDF_EPOCH16', 'CDF_TIME_TT2000']) eq 1 then begin
             isTime   = 1B
             depend_0 = self -> GetVarData(varName, CDF_TYPE=epoch_type)
-            
+
         endif else begin
             ;Search for DEPEND_0
             tf_has = varObj -> HasAttr('DEPEND_0')

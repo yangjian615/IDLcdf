@@ -50,6 +50,8 @@
 ;   Modification History::
 ;       2014/08/22  -   Written by Matthew Argall
 ;       2015/04/30  -   A CDF ID can be provided instead of a file name. - MRA
+;       2015/05/13  -   Epoch type determined VARNAME is not the Epoch variable. All
+;                           DEPEND_0 records read when searching for time interval. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -203,7 +205,7 @@ PADVALUE=padvalue
         
         ;Indicate file was opened here
         tf_opened = 1B
-    endif
+    endelse
     
     ;Get information about the variable
     var_inq  = cdf_varinq(cdfID, varName)
@@ -224,7 +226,7 @@ PADVALUE=padvalue
         if max(datatype eq ['CDF_EPOCH', 'CDF_EPOCH16', 'CDF_TIME_TT2000']) eq 1 then begin
             isTime   = 1B
             tf_has   = 0B
-            cdf_varget, cdfID, varname, depend_0
+            cdf_varget, cdfID, varname, depend_0, REC_COUNT=var_info.maxrec+1
             epoch_type = datatype
         
         endif else begin
@@ -232,11 +234,18 @@ PADVALUE=padvalue
             cdf_attget_entry, cdfID, 'DEPEND_0', varname, entryType, tVarName, tf_has
             
             ;Does the attribute exist?
-            if tf_has then begin
-                cdf_varget, cdfID, tVarName, depend_0
-            endif else begin
+            if ~tf_has then $
                 message, 'No DEPEND_0 attribute exists for variable "' + varname + '". Reading all records.', /INFORMATIONAL
-            endelse
+            
+            ;Get the epoch type
+            dep0_inq   = cdf_varinq(cdfID, tVarName)
+            epoch_type = dep0_inq.datatype
+            
+            ;Get the number of records
+            cdf_control, cdfID, GET_VAR_INFO=dep0_info, VARIABLE=tVarName
+            
+            ;Get the data
+            cdf_varget, cdfID, tVarName, depend_0, REC_COUNT=dep0_info.maxrec+1
         endelse
 
         ;Is there a DEPEND_0 variable?
@@ -258,9 +267,15 @@ PADVALUE=padvalue
             ;REC_START and REC_COUNT are needed
             comp = MrCDF_Epoch_Compare(depend_0, epoch_start, epoch_end)
             iMatch = where(comp eq 1, rec_count)
-            if rec_count eq 0 $
-                then message, 'No records found between REC_START and REC_END.' $
-                else rec_start_out = min(iMatch)
+            if rec_count eq 0 then begin
+                t0 = MrCDF_Epoch_Encode(depend_0[0])
+                t1 = MrCDF_Epoch_Encode(depend_0[n_elements(depend_0)-1])
+                msg = string(FORMAT='(%"No records found between REC_START and REC_END. ' + $
+                                    'Data range %s - %s.")', t0, t1)
+                message, msg
+            endif else begin
+                rec_start_out = min(iMatch)
+            endelse
         endif
 
 ;-----------------------------------------------------
@@ -307,7 +322,7 @@ PADVALUE=padvalue
     ;Get the data
     if isTime eq 0 then begin
         cdf_varget, cdfID, varname, data, $
-                    REC_START=rec_start, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                    REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                     OFFSET=offset, COUNT=count, INTERVAL=interval, STRING=string
     endif else begin
         data = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
@@ -322,7 +337,7 @@ PADVALUE=padvalue
         
             if has_dep0 then begin
                 cdf_varget, cdfID, dep0VarName, depend_0, $
-                            REC_START=rec_start, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                            REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                             OFFSET=offset, COUNT=count, INTERVAL=interval
             endif
         endelse
@@ -334,7 +349,7 @@ PADVALUE=padvalue
         
         if has_dep1 then begin
             cdf_varget, cdfID, dep1VarName, depend_1, $
-                        REC_START=rec_start, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                        REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                         OFFSET=offset, COUNT=count, INTERVAL=interval
         endif
     endif
@@ -345,7 +360,7 @@ PADVALUE=padvalue
         
         if has_dep2 then begin
             cdf_varget, cdfID, dep2VarName, depend_2, $
-                        REC_START=rec_start, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                        REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                         OFFSET=offset, COUNT=count, INTERVAL=interval
         endif
     endif
