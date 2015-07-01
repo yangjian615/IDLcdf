@@ -149,7 +149,10 @@ VARINQ = varinq
 		;Number of records -- read all
 		cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
 		rec_count = var_info.maxrec + 1
-	
+		
+		;Do not show annoying cdf_varget warnings
+		!Quiet = 1
+		
 		;Get its data
 		cdf_varget, cdfID, theName, temp_data, $
 		            REC_COUNT    = rec_count, $
@@ -158,6 +161,9 @@ VARINQ = varinq
 		            COUNT        = count, $
 		            INTERVAL     = interval, $
 		            STRING       = string
+		
+		;Turn on normal warnings.
+		!Quiet = 0
 		
 		;Append it to other data?
 		varinq = cdf_varinq(cdfID, theName)
@@ -227,6 +233,14 @@ end
 ;                               by MrTimeParser.pro. Automatically sets `TIME`=1.
 ;       REC_INTERVAL:       in, optional, type=integer, default=1
 ;                           Interval between records when reading multiple records.
+;       STATUS:             out, optional, type=integer
+;                           Named variable to receive the error status. If present, no
+;                               error is issued and a value of -1 is returned.
+;                                    0  -  No Error
+;                                    1  -  Unexpected error
+;                                    2  -  Trapped error
+;                                    3  -  No records found
+;                                    4  -  No records in time interval
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
@@ -257,13 +271,18 @@ DEPEND_2=depend_2, $
 DEPEND_3=depend_3, $
 DATATYPE=datatype, $
 FILLVALUE=fillvalue, $
-PADVALUE=padvalue
+PADVALUE=padvalue, $
+STATUS=status
 	compile_opt strictarr
 
 	;catch errors
 	catch, the_error
 	if the_error ne 0 then begin
 		catch, /CANCEL
+	
+		;Check that warnings are turned back on
+		if !Quiet eq 1 then !Quiet = 0
+		if status eq 0 then status = 1
 	
 		;Close the file
 		if n_elements(cdfID) gt 0 && tf_open then cdf_close, cdfID
@@ -272,11 +291,13 @@ PADVALUE=padvalue
 		if MrCmpVersion('8.0') le 0 then $
 			if validate eq 0 then cdf_set_validate, /YES
 		
-		void = cgErrorMsg(/QUIET)
+		;Issue error
+		if ~arg_present(status) then void = cgErrorMsg(/QUIET)
 		return, -1
 	endif
 
 	;Defaults
+	status   = 0
 	validate = keyword_set(validate)
 	if n_elements(pattern) eq 0 then pattern = '%Y-%M-%dT%H:%m:%S%z'
 	if n_elements(tstart)  eq 0 then tstart  = ''
@@ -411,10 +432,14 @@ PADVALUE=padvalue
 		;Select a subset of time
 		iselect = where(depend_0 ge t0 and depend_0 lt t1, nselect)
 		if nselect eq 0 then begin
+			;Set status
+			status = 4
+		
+			;Create message
 			epoch_range = MrCDF_Epoch_Encode([depend_0[0], depend_0[n_elements(depend_0)-1]])
 			time_range  = MrCDF_Epoch_Encode([t0, t1])
-			message, string(FORMAT='(%"No records found in time interval %s to %s")', time_range), /INFORMATIONAL
-			message, string(FORMAT='(%"Data ranges from %s to %s")', epoch_range)
+			message, string(FORMAT='(%"No records found in time interval %s to %s")', time_range) + $
+			         string(10B) + string(FORMAT='(%"Data ranges from %s to %s")', epoch_range)
 		endif
 
 	;-----------------------------------------------------
