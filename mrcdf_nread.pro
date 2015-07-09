@@ -256,6 +256,7 @@ end
 function MrCDF_nRead, files, varName, $
 ;INPUT
 COUNT=count, $
+COL_MAJOR=col_major, $
 INTERVAL=interval, $
 OFFSET=offset, $
 PATTERN=pattern, $
@@ -297,8 +298,9 @@ STATUS=status
 	endif
 
 	;Defaults
-	status   = 0
-	validate = keyword_set(validate)
+	status    = 0
+	col_major = keyword_set(col_major)
+	validate  = keyword_set(validate)
 	if n_elements(pattern) eq 0 then pattern = '%Y-%M-%dT%H:%m:%S%z'
 	if n_elements(tstart)  eq 0 then tstart  = ''
 	if n_elements(tend)    eq 0 then tend    = ''
@@ -460,7 +462,7 @@ STATUS=status
 			endcase
 			
 			;DEPEND_1
-			if arg_present(depend_1) && dep1_inq.recvary eq 'VARY' then begin
+			if arg_present(depend_1) && dep1_inq.recvar eq 'VARY' then begin
 				case n_elements(data_inq.dim) of
 					0: depend_1 = depend_1[iselect]
 					1: depend_1 = depend_1[*, iselect]
@@ -471,7 +473,7 @@ STATUS=status
 			endif
 			
 			;DEPEND_2
-			if arg_present(depend_2) && dep2_inq.recvary eq 'VARY' then begin
+			if arg_present(depend_2) && dep2_inq.recvar eq 'VARY' then begin
 				case n_elements(data_inq.dim) of
 					0: depend_2 = depend_2[iselect]
 					1: depend_2 = depend_2[*, iselect]
@@ -482,7 +484,7 @@ STATUS=status
 			endif
 			
 			;DEPEND_3
-			if arg_present(depend_2) && dep3_inq.recvary eq 'VARY' then begin
+			if arg_present(depend_2) && dep3_inq.recvar eq 'VARY' then begin
 				case n_elements(data_inq.dim) of
 					0: depend_3 = depend_3[iselect]
 					1: depend_3 = depend_3[*, iselect]
@@ -497,6 +499,12 @@ STATUS=status
 ;-----------------------------------------------------
 ; Return \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
+	;Return column-major?
+	if col_major then begin
+		ndims = size(data, /N_DIMENSIONS)
+		if ndims gt 1 then data = transpose(data, reverse(indgen(ndims)))
+	endif
+
 	;Turn file validation back on
 	if MrCmpVersion('8.0') le 0 then $
 		if validate eq 0 then cdf_set_validate, /YES
