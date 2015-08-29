@@ -54,6 +54,9 @@
 ;                           information. Added the CANCEL and SELECT_* object properties
 ;                           and the GetProperty method. ::Cancel does not destroy the
 ;                           object, in case we are in ::Init. - MRA
+;       2015/08/15  -   Renamed GetSelect to GetSelection. Added the BOUDNS text box
+;                           to the GUI and incoproated it into Import. File and variable
+;                           nodes are initially expanded. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -80,6 +83,7 @@ BLOCK=block
 	;   | TREE   |  TEXT          |
 	;   |        |  LABEL         |
 	;   |        |  BUTTON TEXT   |
+	;   |        |  LABEL  TEXT   |
 	;   |   OK  CANCEL            |
 	;   |_________________________|
 	;
@@ -141,6 +145,12 @@ BLOCK=block
 	buttonID = widget_button(importID, VALUE='Import', UNAME='IMPORT', $
 	                         UVALUE={object: self, method: 'Import_Data'}) 
 	textID   = widget_text(importID, UNAME='VARNAME', VALUE='', /EDITABLE)
+	
+	;Create "Record Bound" and "Depend Bound" boxes
+	boundID = widget_base(infobase, ROW=1)
+	labelID = widget_label(boundID, UNAME='BOUNDLABEL', VALUE='Bounds', FRAME=3)
+	textID  = widget_text(boundID, UNAME='BOUNDS', VALUE='', /EDITABLE, $
+	                      /ALL_EVENTS, UVALUE={object: self, method: 'Bounds_Events'})
 
 ;---------------------------------------------------------------------
 ;Create OK and Cancel Buttons ////////////////////////////////////////
@@ -202,7 +212,7 @@ pro MrCDF_Browser::Create_Tree, event
 
 	;Create a node for the file
 	self.oCDF -> GetProperty, FILENAME=filename
-	rootID = widget_tree(self.treeID, /FOLDER, $
+	rootID = widget_tree(self.treeID, /FOLDER, /EXPANDED, $
 	                     UNAME  = 'FILE', $
 	                     UVALUE = { object:  self, $
 	                                method:  'Tree_Events', $
@@ -224,7 +234,7 @@ pro MrCDF_Browser::Create_Tree, event
 	                                 varname: '' $
 	                               }, $
 	                      VALUE  = 'Global Attributes')
-	varID   = widget_tree(rootID, /FOLDER, $
+	varID   = widget_tree(rootID, /FOLDER, /EXPANDED, $
 	                      UNAME  = 'VARNODE', $
 	                      UVALUE = { object:  self, $
 	                                 method:  'Tree_Events', $
@@ -357,7 +367,7 @@ pro MrCDF_Browser::Import_Data, event
 	case uvalue.type of
 		;The "Global Attributes" or "Variables" folders
 		'FILE':      data = self.oCDF -> ToStruct()
-		'VARIABLE':  data = self.oCDF -> Read(uvalue.name)
+		'VARIABLE':  data = self.oCDF -> Read(uvalue.name, BOUNDS=self.bounds)
 		'ATTRIBUTE': begin
 			if uvalue.scope eq 'GLOBAL' $
 				then data = self.oCDF -> GetGlobalAttrValue(uvalue.name) $
@@ -471,6 +481,28 @@ pro MrCDF_Browser::Tree_Events, event
 	;Update the variable name field
 	nameID = widget_info(event.top, FIND_BY_UNAME='VARNAME')
 	widget_control, nameID, SET_VALUE=uname
+end
+
+
+;+
+;   Event handler for the Bounds text box.
+;
+; :Params:
+;       EVENT:      in, required, type=structure
+;                   An event structure returned by the windows manager.
+;-
+pro MrCDF_Browser::Bounds_Events, event
+	compile_opt idl2
+	on_error, 2
+	
+	;Insert single (0) or multiple (1) characters, delete characters (2), or highlight (3)
+	case event.type of
+		0: self.bounds = strmid(self.bounds, 0, event.offset-1) + string(event.ch) + strmid(self.bounds, event.offset-1)
+		1: self.bounds = strmid(self.bounds, 0, event.offset-1) + event.str        + strmid(self.bounds, event.offset-1)
+		2: self.bounds = strmid(self.bounds, 0, event.offset)                      + strmid(self.bounds, event.offset + event.length)
+		3: ;Do nothing for highlighting
+		else: message, 'Invalid event type.'
+	endcase
 end
 
 
@@ -648,7 +680,7 @@ pro MrCDF_Browser::GetInfo_Var, varname
 	
 	;Data preview
 	iMax = (product(dimensions) * maxrec) < 20
-	data = oVar -> GetValue()
+	data = oVar -> GetValue(REC_COUNT=iMax)
 
 	;Combine the info into an array
 	info = ['Variable:     '  + name, $
@@ -660,17 +692,24 @@ pro MrCDF_Browser::GetInfo_Var, varname
 ;---------------------------------------------------------------------
 ; Format the Data ////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
-	case 1 of
-		MrIsA(data, /INTEGER): fmt = '(i0)'
-		MrIsA(data, /REAL):    fmt = '(f0)'
-		MrIsA(data, 'STRING'): fmt = '(a0)'
-		else: message, 'Unexpected data type "' + size(data, /TNAME), '".'
-	endcase
-	
+	;Check if the variable has the "FORMAT" attribute. If it does, use it.
+	if self.oCDF -> VarHasAttr(varname, 'FORMAT') then begin
+		fmt = '(' + self.oCDF -> GetVarAttrValue(varname, 'FORMAT') + ')'
+	;Otherwise, pick a generic format
+	endif else begin
+		case 1 of
+			MrIsA(data, /INTEGER): fmt = '(i0)'
+			MrIsA(data, /REAL):    fmt = '(f0)'
+			MrIsA(data, 'STRING'): fmt = '(a0)'
+			else: message, 'Unexpected data type "' + size(data, /TNAME), '".'
+		endcase
+	endelse
+
 	;Join data into a string
 	if iMax gt 0 $
-		then dataStr = '[' + strjoin(string(data[0:iMax], FORMAT=fmt), ', ') + ']' $
-		else dataStr = string(data[0:iMax], FORMAT=fmt)
+		then dataStr = '[' + strjoin(string(data[0:iMax-1], FORMAT=fmt), ', ') + ']' $
+		else dataStr = string(data[0], FORMAT=fmt)
+
 ;---------------------------------------------------------------------
 ; Update Text Box ////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
@@ -701,7 +740,6 @@ CANCEL=cancel
 end
 
 
-
 ;+
 ;   Retrieve information about the selected item.
 ;
@@ -723,7 +761,8 @@ end
 ; :Returns:
 ;       NAME:           Name of the selected item.
 ;-
-function MrCDF_Browser::GetSelect, $
+function MrCDF_Browser::GetSelection, $
+BOUNDS=bounds, $
 TYPE=type, $
 SCOPE=scope, $
 VARNAME=varname
@@ -738,6 +777,7 @@ VARNAME=varname
 	type    = self.select_type
 	scope   = self.select_scope
 	varname = self.select_varname
+	bounds  = self.bounds
 	
 	;Return the name of the selected item.
 	return, name
@@ -767,7 +807,6 @@ pro MrCDF_Browser_Events, event
 
 	;Handle Scrool Wheel events differently
 	call_method, event_handler.method, event_handler.object, event
-
 end
 
 
@@ -905,8 +944,9 @@ pro MrCDF_Browser__define, class
 	class = { MrCDF_Browser, $
 	          tlb:            0L, $                ;Top Level Base
 	          oCDF:           obj_new(), $         ;An object reference to a CDF_Read object
-	          selection:      '', $
+	          bounds:         '', $
 	          cancel:         0B, $
+	          selection:      '', $
 	          select_name:    '', $
 	          select_uname:   '', $
 	          select_type:    '', $

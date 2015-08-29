@@ -49,6 +49,7 @@
 ; :History:
 ;   Modification History::
 ;       2015/03/03  -   Written by Matthew Argall
+;       2015/08/28  -   Make use of the BOUNDS keyword to MrCDF_File::Read. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -485,6 +486,7 @@ end
 ;       GFX:                    A MrGraphics window object in which the data is displayed.
 ;-
 function MrCDF_Viewer::View, varname, $
+ BOUNDS = bounds, $
  CURRENT = current, $
  DISPLAY_DEP = display_dep, $
  FORCE_IMAGE = force_image, $
@@ -508,7 +510,7 @@ _REF_EXTRA = extra
 	if n_elements(display_dep) eq 0 then display_dep = 'DEPEND_1'
 	
 	;Was a variable name given?
-	if n_elements(varname) eq 0 then varname = self -> QueryVarname(DEPEND=depend)
+	if n_elements(varname) eq 0 then varname = self -> QueryVarname(BOUNDS=bounds, DEPEND=depend)
 	if varname eq '' then return, obj_new()
 	
 	;What type of plot?
@@ -554,7 +556,7 @@ _REF_EXTRA = extra
 
 	;Create an object.
 	case strupcase(display_type) of
-		'TIME_SERIES': gfx = self -> Plot(varname)
+		'TIME_SERIES': gfx = self -> Plot(varname, BOUNDS=bounds)
 		'SPECTROGRAM': gfx = self -> Image(varname, display_dep, SUM_PAGES=sum_pages)
 		else: message, 'Display type "' + display_type + '" not recognized.'
 	endcase
@@ -579,6 +581,7 @@ end
 ;       GPLOT:              A MrPlot graphics object.
 ;-
 function MrCDF_Viewer::Plot, varname, $
+BOUNDS=bounds, $
 NAME=name
 	compile_opt strictarr
 	on_error, 2
@@ -592,7 +595,10 @@ NAME=name
 ; Data ///////////////////////////////////////////////////////////////
 ;---------------------------------------------------------------------
 	;Get the dependent data
-	y = self.oCDF -> Read(varname, DEPEND_0=x, _STRICT_EXTRA=extra)
+	y = self.oCDF -> Read(varname, $
+	                      BOUNDS        = bounds, $
+	                      DEPEND_0      = x, $
+	                      _STRICT_EXTRA = extra)
 
 ;---------------------------------------------------------------------
 ; X-Axis Properties //////////////////////////////////////////////////
@@ -675,16 +681,18 @@ end
 ;                           The DEPEND_[123] variable to be displayed.
 ;-
 function MrCDF_Viewer::QueryVarname, $
+BOUNDS = bounds, $
 DEPEND = depend
 	compile_opt idl2
 	on_error, 2
 
 	;Browse for a variable
+	;   - A GUI will pop up and the user will select a variable
 	oBrowser = obj_new('MrCDF_Browser', self.oCDF, /BLOCK)
 	if obj_valid(oBrowser) eq 0 then return, ''
 	
 	;Get info on selected item
-	name = oBrowser -> GetSelect(TYPE=type, SCOPE=scope, VARNAME=varname)
+	name = oBrowser -> GetSelection(TYPE=type, SCOPE=scope, VARNAME=varname, BOUNDS=bounds)
 	if n_elements(name) eq 0 then return, ''
 	obj_destroy, oBrowser
 
@@ -701,6 +709,7 @@ DEPEND = depend
 
 	return, name
 end
+
 
 ;+
 ;   The purpose of this method is to retrieve and organize time series-related meta-data

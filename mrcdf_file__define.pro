@@ -2503,8 +2503,11 @@ OBJECT=object
     on_error, 2
 
     ;Try to find the object
-    varObj = self.variables -> FindByName(varName, COUNT=count)
-    if count eq 0 then message, 'Cannot find variable "' + varName + '".'
+    varObj = self.zvars -> FindByName(varName, COUNT=count)
+    if count eq 0 then begin
+        varObj = self.rvars -> FindByName(varName, COUNT=count)
+        if count eq 0 then message, 'Cannot find variable "' + varName + '".'
+    endif
     
     ;Is the attribute there?
     tf_has = varObj -> HasAttr(attrName, OBJECT=object)
