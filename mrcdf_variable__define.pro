@@ -72,6 +72,7 @@
 ;       2015/02/06  -   _OverloadPrint/Help provide concise, well formatted output.
 ;                           Variable compression now possible. - MRA
 ;       2015/04/23  -   Moved compression information to from _OverloadHelp to _OverloadPrint. - MRA
+;       2015/08/28  -   Turn off warning messages from CDF_VarGet. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -412,7 +413,14 @@ CDF_TYPE=cdf_type, $
 FILLVALUE=fillvalue, $
 PADVALUE=padvalue
     compile_opt strictarr
-    on_error, 2
+    
+    catch, the_error
+    if the_error ne 0 then begin
+        catch, /CANCEL
+        !Quiet = 0
+        void = cgErrorMSG(/QUIET)
+        return, -1
+    endif
     
     ;Defaults
     single_value = keyword_set(single_value)
@@ -424,6 +432,9 @@ PADVALUE=padvalue
     ;Get the file ID
     parentID = self.parent -> GetFileID()
     
+    ;Turn off annoying error messages
+    !Quiet = 1
+    
     ;Get the value(s)
     if single_value then begin
         cdf_varget1, parentID, self.name, value, OFFSET=offset, REC_START=rec_start, STRING=string
@@ -432,6 +443,9 @@ PADVALUE=padvalue
                     OFFSET=offset, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                     REC_START=rec_start, STRING=string
     endelse
+    
+    ;Turn warnings back on
+    !Quiet = 0
 
     ;Output Keywords
     cdf_type  = self.cdf_type
