@@ -643,20 +643,19 @@ NAME=name
 ;---------------------------------------------------------------------
 ;Convert from Epoch //////////////////////////////////////////////////
 ;---------------------------------------------------------------------
-	
+	t_ssm = MrCDF_epoch2ssm(x)
 	
 ;---------------------------------------------------------------------
 ;Create the Plot Object //////////////////////////////////////////////
 ;---------------------------------------------------------------------
-
-	gPlot = MrPlot(x, y, /CURRENT, $
-	               DIMENSION   = size(x, /N_DIMENSIONS), $
+	gPlot = MrPlot(t_ssm, y, /CURRENT, $
+	               DIMENSION   = size(y, /N_DIMENSIONS), $ 
 	               MIN_VALUE   = minvalue[0], $
 	               MAX_VALUE   = maxvalue[0], $
 	               NAME        = name[0], $
 	               TITLE       = title, $
 	               XLOG        = xlog, $
-	               XTICKFORMAT = xtickformat, $
+	               XTICKFORMAT = 'time_labels', $
 	               XTITLE      = xtitle, $
 	               YLOG        = ylog, $
 	               YRANGE      = yrange, $

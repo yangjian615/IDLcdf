@@ -1794,8 +1794,8 @@ VALIDATE = validate
     
     ;Pick a file
     if n_elements(filename) eq 0 then begin
-        filename = dialog_pickfile(FILTER='*.cdf', PATH=directory, $
-                                   TITLE='Select a CDF File...', DIALOG_PARENT=dialog_parent)
+        filename = cgpickfile(FILTER='*.cdf', PATH=directory, $
+                              TITLE='Select a CDF File...', DIALOG_PARENT=dialog_parent)
         
         ;Check if the cancel button was pushed.
         if filename eq '' then begin
