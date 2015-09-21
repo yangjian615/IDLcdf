@@ -438,8 +438,9 @@ STATUS=status
 			status = 4
 		
 			;Create message
-			epoch_range = MrCDF_Epoch_Encode([depend_0[0], depend_0[n_elements(depend_0)-1]])
-			time_range  = MrCDF_Epoch_Encode([t0, t1])
+			epoch_range = MrCDF_Epoch_Encode([depend_0[0], depend_0[n_elements(depend_0)-1]], $
+			                                 PATTERN='%Y-%M-%dT%H:%m:%S')
+			time_range  = MrCDF_Epoch_Encode([t0, t1], PATTERN='%Y-%M-%dT%H:%m:%S')
 			message, string(FORMAT='(%"No records found in time interval %s to %s")', time_range) + $
 			         string(10B) + string(FORMAT='(%"Data ranges from %s to %s")', epoch_range)
 		endif
