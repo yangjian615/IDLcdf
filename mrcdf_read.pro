@@ -106,6 +106,10 @@
 ;       REC_END:            in, optional, type=integer
 ;                           If set, the last record to read. `REC_COUNT` will be set
 ;                               as `REC_END` - `REC_START` + 1.
+;       STATUS:             out, optional, type=integer
+;                           Returns 1 if successful and 0 otherwise. If present and
+;                               reading is unsuccessful, the error message will not
+;                               be issued.
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
@@ -140,6 +144,7 @@ REC_COUNT=rec_count, $
 REC_END=rec_end, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
+STATUS=status, $
 STRING=string, $
 TIME=time, $
 VALIDATE=validate, $
@@ -164,12 +169,15 @@ PADVALUE=padvalue
         ;Turn file validation back on
         if MrCmpVersion('8.0') le 0 then $
             if validate eq 0 then cdf_set_validate, /YES
-            
-        void = cgErrorMsg()
+        
+        ;Log the error
+        status = 0
+        if arg_present(status) then MrPrintF, 'LogErr'
         return, -1
     endif
     
     ;Defaults
+    status   = 1
     oBounds  = arg_present(oBounds)
     time     = keyword_set(time)
     validate = keyword_set(validate)

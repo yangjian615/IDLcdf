@@ -427,7 +427,6 @@ PADVALUE=padvalue
     if n_elements(string)    eq 0 then string       = 1
     if n_elements(rec_count) eq 0 then rec_count    = self.maxrec + 1
     if n_elements(rec_start) eq 0 then rec_start    = 0
-    if rec_count             eq 1 then single_value = 1
     
     ;Get the file ID
     parentID = self.parent -> GetFileID()
@@ -443,7 +442,7 @@ PADVALUE=padvalue
                     OFFSET=offset, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                     REC_START=rec_start, STRING=string
     endelse
-    
+
     ;Turn warnings back on
     !Quiet = 0
 

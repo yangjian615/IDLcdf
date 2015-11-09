@@ -81,7 +81,7 @@ EPOCH_TYPE=epoch_type
 
 	;Find midnight on T_REF
 	MrCDF_Epoch_Breakdown, t_ref, yr, mo, day
-	MrCDF_Epoch_Compute,   t0,    yr, mo, day
+	t0 = MrCDF_Epoch_Compute(yr, mo, day)
 
 	;Convert to seconds.
 	case epoch_type of

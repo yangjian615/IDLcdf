@@ -470,7 +470,7 @@ end
 ; :Params:
 ;       VARNAME:            in, required, type=string
 ;                           Name of the variable to be created.
-;       DATATYPE:           in, required, type=string
+;       CDF_TYPE:           in, required, type=string
 ;                           Either the IDL type-name (as returned by Size(/TNAME)) or
 ;                               the CDF datatype of the variable to be created. See the
 ;                               file header for CDF data types.
@@ -499,7 +499,7 @@ end
 ;                               `COMPRESSION` is set to 5 automatically.
 ;       NUMELEM:            in, optional, type=long, default=1
 ;                           Number of elements of data at each variable value. Only valid
-;                               if `DATATYPE` is "CDF_CHAR" or "CDF_UCHAR" and indicates
+;                               if `CDF_TYPE` is "CDF_CHAR" or "CDF_UCHAR" and indicates
 ;                               the length of the string.
 ;       REC_NOVARY:         in, optional, type=boolean, default=0
 ;                           If set, all records will contain the same information. The
@@ -790,18 +790,23 @@ varname=varname
     ;Get the name
     vAttrName = attrObj -> GetName()
     
+    ;Create the attribute if we need to
+    if destObj -> HasAttr(vAttrName) eq 0 $
+        then destObj -> CreateAttr, vAttrName, /VARIABLE_SCOPE
+
     ;Copy Attribute
-    if n_elements(varname) eq 0 then begin
-        destObj -> CreateAttr, vAttrName, /VARIABLE_SCOPE
-    
-    ;Copy value
-    endif else begin
+    if n_elements(varname) gt 0 then begin
         ;Get the attribute value
-        vAttrValue = attrObj -> GetVarAttrValue(varname)
+        vAttrValue = attrObj -> GetVarAttrValue(varname, CDF_TYPE=cdf_type)
+        
+        ;Is it an epoch value?
+        isEpoch = cdf_type eq 'CDF_EPOCH'   || $
+                  cdf_type eq 'CDF_EPOCH16' || $
+                  cdf_type eq 'CDF_TIME_TT2000'
         
         ;Copy Attribute value
-        destObj -> WriteVarAttr, varname, vAttrName, vAttrValue
-    endelse
+        destObj -> WriteVarAttr, varname, vAttrName, vAttrValue, CDF_EPOCH=isEpoch
+    endif
 end
 
 
@@ -840,12 +845,12 @@ pro MrCDF_File::CopyVariableTo, variable, destObj
         else: message, 'VARIABLE must be an attribute name or object.'
     endcase
 
-    ;Does the variable exist in the destination? If not, create it.
+    ;Make sure we have a variable name
     varname = varObj  -> GetName()
     
     ;Get the variable definition
-    varObj -> GetProperty, COMPRESSION = compression, $
-                           DATATYPE    = datatype, $
+    varObj -> GetProperty, CDF_TYPE    = cdf_type, $
+                           COMPRESSION = compression, $
                            DIMVAR      = dimvary, $
                            DIMENSIONS  = dimensions, $
                            GZIP_LEVEL  = gzip_level, $
@@ -853,25 +858,27 @@ pro MrCDF_File::CopyVariableTo, variable, destObj
                            NELEMENTS   = numelem, $
                            RECVAR      = recvar, $
                            ZVARIABLE   = zvariable
-    
-    ;Copy to destination
-    destObj -> CreateVar, varname , datatype, dimvary, $
-                          ALLOCATERECS = maxrec+1, $
-                          COMPRESSION  = compression, $
-                          DIMENSIONS   = dimensions, $
-                          GZIP_LEVEL   = gzip_level, $
-                          NUMELEM      = numelem, $
-                          REC_NOVARY   = ~recvar, $
-                          ZVARIABLE    = zvariable
+
+    ;Does the variable exist in the destination? If not, create it.
+    if destObj -> HasVar(varname) eq 0 then begin
+        destObj -> CreateVar, varname, cdf_type, dimvary, $
+                              ALLOCATERECS = maxrec+1, $
+                              COMPRESSION  = compression, $
+                              DIMENSIONS   = dimensions, $
+                              GZIP_LEVEL   = gzip_level, $
+                              NUMELEM      = numelem, $
+                              REC_NOVARY   = ~recvar, $
+                              ZVARIABLE    = zvariable
+    endif
     
     ;Copy the variable's data
     self -> CopyVarDataTo, varName, destObj
     
     ;Copy the variable's attributes.
     varAttrNames = varObj -> GetAttrNames(COUNT=nVarAttrs)
-    for i = 0, nVarAttrs - 1 do begin
-        self -> CopyVarAttrTo, varAttrNames[i], destObj, VARNAME=varname
-    endfor
+
+    for i = 0, nVarAttrs - 1 $
+        do self -> CopyVarAttrTo, varAttrNames[i], destObj, VARNAME=varname
 end
 
 
@@ -2132,7 +2139,7 @@ PADVALUE=padvalue
     
     ;Dependencies
     if pattern ne '' || MrIsA(rec_start, 'STRING') || MrIsA(rec_end, 'STRING') then time = 1
-    if time && n_elements(pattern) eq 0 then pattern = "%Y-%M-%dT%H:%m:%S%z"
+    if time && pattern eq '' then pattern = "%Y-%M-%dT%H:%m:%S%z"
 
     ;Get the variable object
     tf_has = self -> HasVar(varName, OBJECT=varObj)
@@ -2761,7 +2768,7 @@ ZVARIABLE=zvariable
         
         ;Assume dimensional variance.
         if n_elements(dimVary) eq 0 then $
-            if n_elements(dims) ne 0 then dimVary = bytarr(n_elements(dims)) + 1
+            if n_elements(dims) ne 0 then dimVary = dims gt 1
         
         ;Get the data type
         if n_elements(cdf_type) eq 0 then begin

@@ -198,11 +198,6 @@ end
 ;   The purpose of this program is to compute or break-down CDF Epoch times.
 ;
 ; :Params:
-;       T_EPOCH:            in, out, required, type=dblarr/dcomplexarr/lon64arr
-;                           An array of epoch times. Accepted epoch types are::
-;                               CDF_EPOCH
-;                               CDF_EPOCH16
-;                               CDF_TIME_TT2000
 ;       YEAR:               in, out, required, type=intarr
 ;                           Year of each epoch time.
 ;       MONTH:              in, out, required, type=intarr
@@ -245,8 +240,12 @@ end
 ;                           If `COMPUTE_EPOCH` is performed, indicate that CDF_TIME_TT2000
 ;                               times are to be generated. This is the default for CDF
 ;                               versions greater than or equal to 3.4.
+;
+; :Params:
+;       T_EPOCH:            out, required, type=dblarr/dcomplexarr/lon64arr
+;                           An array of computed epoch times. Accepted epoch types are::
 ;-
-pro MrCDF_Epoch_Compute, t_epoch, year, month, day, hour, minute, second, milli, micro, nano, pico, $
+function MrCDF_Epoch_Compute, year, month, day, hour, minute, second, milli, micro, nano, pico, $
 CDF_EPOCH=cdfepoch, $
 EPOCH16=epoch16, $
 TT2000=tt2000, $
@@ -289,7 +288,7 @@ EPOCH_TYPE=epoch_type
 			'CDF_TIME_TT2000': cdf_tt2000,  t_epoch, year, month, day, hour, minute, second, milli, micro, nano, /COMPUTE_EPOCH
 		endcase
 	
-		return
+		return, t_epoch
 	endif
 
 
@@ -344,4 +343,6 @@ EPOCH_TYPE=epoch_type
 	endif else begin
 		message, 'Unknown CDF Epoch type: "' + eType + '".'
 	endelse
+	
+	return, t_epoch
 end

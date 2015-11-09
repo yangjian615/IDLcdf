@@ -293,7 +293,7 @@ STATUS=status
 			if validate eq 0 then cdf_set_validate, /YES
 		
 		;Issue error
-		if ~arg_present(status) then void = cgErrorMsg(/QUIET)
+		if ~arg_present(status) then MrPrintF, 'LogErr'
 		return, -1
 	endif
 
