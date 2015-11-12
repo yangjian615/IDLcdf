@@ -153,11 +153,9 @@ function MrCDF_Variable::_OverloadHelp, varname
     selfStr = class + '   <' + strtrim(heapID, 2) + '>'
     
     ;Dimensions
-    case n_elements(*self.dim) of
-        0:    dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']'
-        1:    dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']'
-        else: dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
-    endcase
+    if n_elements(*self.dimvar) eq 1 && *self.dimvar eq 0 $
+        then dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']' $
+        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
     
     ;Variable type
     var_type = self.zvariable ? 'zVar' : 'rVar'
@@ -184,11 +182,9 @@ function MrCDF_Variable::_OverloadPrint
     endif
     
     ;Dimensions
-    case n_elements(*self.dim) of
-        0:    dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']'
-        1:    dimStr = '[' + strtrim(*self.dim, 2) + ', ' + strtrim(self.maxRec+1, 2) + ']'
-        else: dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
-    endcase
+    if n_elements(*self.dimvar) eq 1 && *self.dimvar eq 0 $
+        then dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']' $
+        else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
     
     ;Variable type
     var_type = self.zvariable ? 'zVar' : 'rVar'
@@ -581,10 +577,8 @@ pro MrCDF_Variable::Parse
     self.cdf_type  = varinq.datatype
     self.nelements = varinq.numelem
     self.recvar    = varinq.recvar
-    if ~(n_elements(varinq.dim) eq 1 && varinq.dim eq 0) then begin
-        *self.dimvar = varinq.dimvar
-        *self.dim    = varinq.dim
-    endif
+    *self.dimvar   = varinq.dimvar
+    *self.dim      = varinq.dim
 
     ;More info
     cdf_control, parentID, VARIABLE=self.name, ZVARIABLE=self.zvariable, GET_VAR_INFO=varinfo
@@ -758,8 +752,9 @@ READ_DATA=read_data
     read_data = keyword_set(read_data)
     
     ;Number of dimensions
-    nDimensions = n_elements(self.dim)
-    if nDimensions eq 1 && *self.dim eq 0 then nDimensions = 0
+    ;   - Zero dimensional CDF files have DIMVAR=0
+    nDimensions = n_elements(*self.dimvar)
+    if nDimensions eq 1 && *self.dimvar eq 0 then nDimensions = 0
     
     ;Get the data?
     if read_data $

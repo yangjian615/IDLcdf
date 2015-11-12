@@ -572,9 +572,12 @@ ZVARIABLE=zvariable
 ;-------------------------------------------------------
 ; Write Data ///////////////////////////////////////////
 ;-------------------------------------------------------
+    ;
+    ; Do allocate records until after compression has
+    ; been set.
+    ;
     if n_elements(dimVary) eq 0 then begin
         varID = cdf_varcreate(self.fileID, varName, $
-                              ALLOCATERECS    = allocaterecs, $
                               DIMENSIONS      = dimensions, $
                               NUMELEM         = numelem, $
                               REC_NOVARY      = rec_novary, $
@@ -598,7 +601,6 @@ ZVARIABLE=zvariable
                               CDF_TIME_TT2000 = cdf_time_tt2000)
     endif else begin
         varID = cdf_varcreate(self.fileID, varName, dimVary, $
-                              ALLOCATERECS    = allocaterecs, $
                               DIMENSIONS      = dimensions, $
                               NUMELEM         = numelem, $
                               REC_NOVARY      = rec_novary, $
@@ -630,14 +632,25 @@ ZVARIABLE=zvariable
 ;-------------------------------------------------------
 ; Set Compression //////////////////////////////////////
 ;-------------------------------------------------------
+    ;Compression must be set before writing or allocating records
     if (n_elements(compression) gt 0) || (n_elements(gzip_level) gt 0) then begin
-        if n_elements(allocaterecs) gt 0 then begin
-            message, 'Records have been allocated with ALLOCATERECS. Cannot set compression.', /INFORMATIONAL
-        endif else begin
-            tf_has = self -> HasVar(varName, OBJECT=varObj)
-            varObj -> SetCompression, comp, GZIP_LEVEL=gzip_level
-        endelse
+        tf_has = self -> HasVar(varName, OBJECT=varObj)
+        varObj -> SetCompression, compression, GZIP_LEVEL=gzip_level
     endif
+
+;-------------------------------------------------------
+; Set Initial Records //////////////////////////////////
+;-------------------------------------------------------
+    ;
+    ; Compression cannot be performed if records have already
+    ; been allocated. Delay record allocation until after
+    ; compression has been set.
+    ;
+    ; Records must be allocated before any data has been written
+    ; to the CDF file.
+    ;
+    if n_elements(allocaterecs) gt 0 $
+        then cdf_control, self.fileID, VARIABLE=varName, SET_INITIALRECS=allocaterecs
 end
 
 
@@ -2750,18 +2763,24 @@ ZVARIABLE=zvariable
         ;Must be a variable name
         if size(variable, /TNAME) ne 'STRING' then $
             message, 'To create a new variable, VARIABLE must be a scalar string.'
+        
+        ;Variable size
+        nDims = size(data, /N_DIMENSIONS)
+        dims  = size(data, /DIMENSIONS)
 
         ;Already exists?    
         tf_has = self -> HasVar(variable)
         if tf_has then message, 'Variable name already exists: "' + variable + '". Cannot create.'
         
-        ;Get size
-        zvariable = n_elements(zvariable) eq 0 ? 1: keyword_set(zvariable)
+        ;Z-variable status
+        zvariable = n_elements(zvariable) eq 0 ? 1 : keyword_set(zvariable)
+        
+        ;Records
         rec_novary = keyword_set(rec_novary)
+        if n_elements(allocaterecs) eq 0 then allocate_recs = dims[nDims-1]
+        
+        ;Dimensions
         if zvariable and n_elements(dimensions) eq 0 then begin
-            nDims = size(data, /N_DIMENSIONS)
-            dims  = size(data, /DIMENSIONS)
-            
             if nDims gt 1 then dims = dims[0:nDims-2]
             if nDims eq 0 then rec_novary = 1
         endif

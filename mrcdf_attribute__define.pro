@@ -384,7 +384,7 @@ end
 ;-
 function MrCDF_Attribute::GetGlobalAttrValue, entryNum, $
 CDF_TYPE=cdf_type, $
-COUNT=nEntries, $
+COUNT=numGEntries, $
 ERROR=the_error, $
 ENTRYMASK=entryMask, $
 ZVARIABLE=zvariable
@@ -399,19 +399,19 @@ ZVARIABLE=zvariable
     endif
     
     ;Get the CDF file ID
-    fileID = self.parent -> GetFileID()
-    nEntryNum = n_elements(entryNum)
-    cdf_type  = ''
+    fileID      = self.parent -> GetFileID()
+    numGEntries = n_elements(entryNum)
+    cdf_type    = ''
 
 ;-----------------------------------------------------
 ; Specific Entries \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
-    if nEntryNum gt 0 then begin
-        cdf_type   = strarr(nEntryNum)
-        gEntryMask = bytarr(nEntryNum)
+    if numGEntries gt 0 then begin
+        cdf_type   = strarr(nEntries)
+        gEntryMask = bytarr(nEntries)
     
         ;Step through each entry
-        for i = 0, nEntryNum-1 do begin
+        for i = 0, numGEntries-1 do begin
             theEntry = entryNum[i]
         
             ;Make sure the entry number exists
@@ -423,8 +423,8 @@ ZVARIABLE=zvariable
             cdf_attget, fileID, self.name, theEntry, attrValue, CDF_TYPE=type
             
             ;Store the value and type
-            cdf_type  = type
-            gEntryMask = 1B
+            cdf_type[i]   = type
+            gEntryMask[i] = 1B
         endfor
 
 ;-----------------------------------------------------
@@ -446,10 +446,9 @@ ZVARIABLE=zvariable
         ; is the 0-based index of the last index. We must allocate at least maxGEntry+1
         ; elements to our arrays to capture all entry locations.
         ;
-        nEntries   = maxGEntry + 1
         cdf_type   = strarr(numGEntries)
         entryNum   = lindgen(numGEntries)
-        gEntryMask = bytarr(nEntries)
+        gEntryMask = bytarr(maxGEntry+1)
         theType    = ''
     
         gAttrCount = 0L
@@ -462,7 +461,7 @@ ZVARIABLE=zvariable
             
             ;Is this the first value?
             if n_elements(attrValue) eq 0 then begin
-                attrValue = make_array(nEntries, TYPE=size(value, /TYPE))
+                attrValue = make_array(numGEntries, TYPE=size(value, /TYPE))
                 theType   = type
             endif
             
@@ -483,15 +482,15 @@ ZVARIABLE=zvariable
         endfor
         
         ;Trim results
-        if gAttrCount ne nEntries then $
+        if gAttrCount ne numGEntries then $
             message, 'Not all Global Attributes found.', /INFORMATIONAL
     endelse
     
     ;Return a scalar?
-    if n_elements(attrValue) eq 1 then begin
-        attrValue   = attrValue[0]
-        cdf_type    = cdf_type[0]
-        entryNum    = entryNum[0]
+    if numGEntries eq 1 then begin
+        attrValue  = attrValue[0]
+        cdf_type   = cdf_type[0]
+        entryNum   = entryNum[0]
         gEntryMask = gEntryMask[0]
     endif
     
@@ -719,7 +718,7 @@ function MrCDF_Attribute::ToStruct, varName
     ;Get the parent's ID
     parentID = self.parent -> GetFileID()
     cdf_control, parentID, ATTRIBUTE=self.name, GET_ATTR_INFO=attr_info
-    
+
     ;Read the attribute data
     if self.global $
         then data = self -> GetGlobalAttrValue(CDF_TYPE=cdf_type, COUNT=nElements) $
