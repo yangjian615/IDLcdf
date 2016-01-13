@@ -81,7 +81,7 @@ VALIDATE=validate
         if MrCmpVersion('8.0') le 0 then $
             if validate eq 0 then cdf_set_validate, /YES
             
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     

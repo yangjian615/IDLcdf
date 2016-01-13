@@ -501,7 +501,7 @@ _REF_EXTRA = extra
 	if the_error ne 0 then begin
 		catch, /CANCEL
 		if current eq 0 then if obj_valid(gWin) then obj_destroy, gWin
-		void = cgErrorMsg()
+		MrPrintF, 'LogErr'
 		return, obj_new()
 	endif
 
@@ -981,7 +981,7 @@ pro MrCDF_Viewer::Cleanup
 	catch, the_error
 	if the_error ne 0 then begin
 		catch, /cancel
-		void = cgErrorMsg()
+		MrPrintF, 'LogErr'
 		return
 	endif
 	
@@ -1022,7 +1022,7 @@ _REF_EXTRA = extra
 	catch, the_error
 	if the_error ne 0 then begin
 		catch, /cancel
-		void = cgErrorMsg()
+		MrPrintF, 'LogErr'
 		return, 0
 	endif
 

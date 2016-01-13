@@ -70,7 +70,7 @@ pro MrCDF_File_Examples, directory
         if obj_valid(srcObj)  then obj_destroy, srcObj
         if obj_valid(destObj) then obj_destroy, destObj
         if obj_valid(copyObj) then obj_destroy, copyObj
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     

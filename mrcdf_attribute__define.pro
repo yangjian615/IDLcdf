@@ -87,7 +87,7 @@ function MrCDF_Attribute::_OverloadPrint
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -141,7 +141,7 @@ VARIABLE=variable
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, ''
     endif
 
@@ -200,7 +200,7 @@ NUMZENTRIES=numZEntries
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -394,7 +394,7 @@ ZVARIABLE=zvariable
     if the_error ne 0 then begin
         catch, /cancel
         if obj_valid(attrValueList) then obj_destroy, attrValueList
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -527,7 +527,7 @@ COUNT=nElements
     if the_error ne 0 then begin
         catch, /cancel
         if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -609,7 +609,7 @@ pro MrCDF_Attribute::ParseGlobalAttribute
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -635,7 +635,7 @@ pro MrCDF_Attribute::ParseVariableAttribute
     if the_error ne 0 then begin
         catch, /cancel
         if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -682,7 +682,7 @@ QUIET=quiet
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -705,7 +705,7 @@ function MrCDF_Attribute::ToStruct, varName
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -769,7 +769,7 @@ QUIET=quiet
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, 0
     endif
 

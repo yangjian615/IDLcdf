@@ -102,7 +102,7 @@ function MrCDF_Variable::_OverloadBracketsRightSide, isRange, subscript1
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -144,7 +144,7 @@ function MrCDF_Variable::_OverloadHelp, varname
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, ''
     endif
     
@@ -177,7 +177,7 @@ function MrCDF_Variable::_OverloadPrint
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, ''
     endif
     
@@ -236,7 +236,7 @@ SHOW=show
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, ''
     endif
     
@@ -291,7 +291,7 @@ PTR_VALUE=ptr_value
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -561,7 +561,7 @@ pro MrCDF_Variable::Parse
     if the_error ne 0 then begin
         catch, /cancel
         if n_elements(thisQuiet) gt 0 then !quiet = thisQuiet
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
 
@@ -657,7 +657,7 @@ GZIP_LEVEL=gzip_level
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -725,7 +725,7 @@ QUIET=quiet
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -744,7 +744,7 @@ READ_DATA=read_data
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -817,7 +817,7 @@ CDF_EPOCH=cdf_epoch
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -889,7 +889,7 @@ QUIET=quiet
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, 0
     endif
     

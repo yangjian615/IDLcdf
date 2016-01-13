@@ -161,7 +161,7 @@ function MrCDF_File::_OverloadBracketsRightSide, isRange, subscript1, subscript2
 	catch, the_error
 	if the_error ne 0 then begin
 		catch, /cancel
-		void = cgErrorMsg()
+		MrPrintF, 'LogErr'
 		return, -1
 	endif
 
@@ -237,7 +237,7 @@ function MrCDF_File::_OverloadPrint
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, ''
     endif
 
@@ -338,7 +338,7 @@ function MrCDF_File::_OverloadHelp, varname
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, ''
     endif
 
@@ -396,7 +396,7 @@ pro MrCDF_File::Close
         self.fileID = 0
     endif else begin
         if stregex(!error_state.msg, 'Invalid CDFid', /BOOLEAN) then return
-        void = cgErrorMSG()
+        MrPrintF, 'LogErr'
         return
     endelse
     catch, /CANCEL
@@ -437,7 +437,7 @@ VARIABLE_SCOPE=variable_scope
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -522,7 +522,7 @@ ZVARIABLE=zvariable
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
 
@@ -670,7 +670,7 @@ pro MrCDF_File::CreateAttrObj, attrName
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -698,7 +698,7 @@ pro MrCDF_File::CreateVarObj, varName
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -1275,7 +1275,7 @@ SHOW=show
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, ''
     endif
 
@@ -1347,7 +1347,7 @@ SHOW=show
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, ''
     endif
 
@@ -1796,7 +1796,7 @@ VALIDATE = validate
         ;close the CDF file if it was opened.
         if n_elements(fileID) ne 0 then cdf_close, self.fileID
         cdf_set_validate, /YES
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return
     endif
     
@@ -1952,7 +1952,7 @@ pro MrCDF_File::ParseFile
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2141,7 +2141,7 @@ PADVALUE=padvalue
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -2341,7 +2341,7 @@ GZIP_LEVEL=gzip_level
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2404,7 +2404,7 @@ QUIET=quiet
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2423,7 +2423,7 @@ READ_DATA=read_data
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return, -1
     endif
     
@@ -2576,7 +2576,7 @@ GENTRYNUM=gEntryNum
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2655,7 +2655,7 @@ CDF_EPOCH=cdf_epoch
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2744,7 +2744,7 @@ ZVARIABLE=zvariable
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        void = cgErrorMsg()
+        MrPrintF, 'LogErr'
         if n_elements(quiet_in) gt 0 then !Quiet = quiet_in
         return
     endif
@@ -2846,7 +2846,7 @@ pro MrCDF_File::cleanup
     catch, the_error
     if the_error ne 0 then begin
         catch, /CANCEL
-        void = cgErrorMSG()
+        MrPrintF, 'LogErr'
         return
     endif
     
@@ -2912,7 +2912,7 @@ _REF_EXTRA=extra
     catch, the_error
     if the_error ne 0 then begin
         catch, /cancel
-        if arg_present(the_error) eq 0 then void = cgErrorMsg()
+        if arg_present(the_error) eq 0 then MrPrintF, 'LogErr'
         return, 0
     endif
 
