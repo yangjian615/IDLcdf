@@ -134,6 +134,7 @@ COUNT = count, $
 INTERVAL = interval, $
 STRING = string, $
 VARINQ = varinq
+	compile_opt idl2
 	on_error, 2
 	
 	;See if the variable has DEPEND_# as an attribute
