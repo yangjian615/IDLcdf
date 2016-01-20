@@ -2715,6 +2715,11 @@ end
 ;                               `COMPRESSION` is set to 5 automatically.
 ;       INTERVAL:           in, optional, type=intarr, default=1 for each dimension
 ;                           Interval between values in each dimension.
+;       NUMELEM:            in, optional, type=integer/intarr, default=1
+;                           The number of elements of the data type at each variable value.
+;                               This keyword only has meaning for string data types
+;                               (CDF_CHAR, CDF_UCHAR). This is the number of characters in
+;                               the string.
 ;       OFFSET:             in, optional, type=intarr, default=0 for each dimension
 ;                           Array indices within the specified record(s) at which to
 ;                               begin writing. OFFSET is a 1-dimensional array
@@ -2736,6 +2741,7 @@ CREATE=create, $
 CDF_TYPE=cdf_type, $
 DIMS=dims, $
 GZIP_LEVEL=gzip_level, $
+NUMELEM=numelem, $
 REC_NOVARY=rec_novary, $
 ZVARIABLE=zvariable
     compile_opt strictarr
@@ -2777,12 +2783,16 @@ ZVARIABLE=zvariable
         
         ;Records
         rec_novary = keyword_set(rec_novary)
-        if n_elements(allocaterecs) eq 0 then allocate_recs = dims[nDims-1]
+        if n_elements(allocaterecs) eq 0 then begin
+            if nDims eq 1 $
+                then allocaterecs = 1 $
+                else allocaterecs = dims[nDims-1]
+        endif
         
         ;Dimensions
         if zvariable and n_elements(dimensions) eq 0 then begin
             if nDims gt 1 then dims = dims[0:nDims-2]
-            if nDims eq 0 then rec_novary = 1
+            if nDims le 1 then rec_novary = 1
         endif
         
         ;Assume dimensional variance.
@@ -2794,11 +2804,17 @@ ZVARIABLE=zvariable
             idl_type = size(data, /TNAME)
             cdf_type = MrCDF_CastDataType(idl_type, /TNAME)
         endif
+        
+        ;CDF_CHAR or CDF_UCHAR
+        if cdf_type eq 'CDF_CHAR' || cdf_type eq 'CDF_UCHAR' then begin
+            numelem = max(strlen(data))
+        endif
 
         ;Create the variable
         self -> CreateVar, variable, cdf_type, dimVary, ALLOCATERECS=allocaterecs, $
                            COMPRESSION=compression, DIMENSIONS=dims, $
-                           GZIP_LEVEL=gzip_level, REC_NOVARY=rec_novary
+                           GZIP_LEVEL=gzip_level, REC_NOVARY=rec_novary, $
+                           NUMELEM=numelem
     endif
     
 ;-----------------------------------------------------
