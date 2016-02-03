@@ -2699,6 +2699,17 @@ end
 ;                           Data to be written.
 ;
 ; :Keywords:
+;       ALLOCATERECS:       in, optional, type=integer, default=length of trailing dimension
+;                           Number of records to allocate to the variable. Note that a
+;                               "scalar" in CDF lingo is a value with any number of
+;                               records and a single, non-varying dimension (i.e. 1xN).
+;                               Also note that dimensions should be ordered as
+;                               [DIM3, DIM2, DIM1, RECS], such that the record varying
+;                               dimension is last. Finally, IDL truncates trailing shallow
+;                               dimensions (e.g. NxMx1 becomes NxM, and Nx1 becomes N). If
+;                               ALLOCATERECS=1, this method will compensate (e.g. expand
+;                               NxM to NxMx1). This keyword is only used when the `CREATE`
+;                               keyword is set.
 ;       COMPRESSION:        in, optional, type=string/integer, default='None'
 ;                           Type of variable compression to perform. Options are::
 ;                               0 or 'None'
@@ -2736,6 +2747,7 @@ OFFSET=offset, $
 REC_INTERVAL=rec_interval, $
 REC_START=rec_start, $
 ;Create Variable?
+ALLOCATERECS=allocaterecs, $
 COMPRESSION=compression, $
 CREATE=create, $
 CDF_TYPE=cdf_type, $
@@ -2769,7 +2781,7 @@ ZVARIABLE=zvariable
         ;Must be a variable name
         if size(variable, /TNAME) ne 'STRING' then $
             message, 'To create a new variable, VARIABLE must be a scalar string.'
-        
+
         ;Variable size
         nDims = size(data, /N_DIMENSIONS)
         dims  = size(data, /DIMENSIONS)
@@ -2780,22 +2792,50 @@ ZVARIABLE=zvariable
         
         ;Z-variable status
         zvariable = n_elements(zvariable) eq 0 ? 1 : keyword_set(zvariable)
-        
+
         ;Records
-        rec_novary = keyword_set(rec_novary)
+        ;   - If a scalar value was given, assume no record variance (next)
+        ;   - Allocate a single record if a scalar was given (NDIMS=0)
+        ;   - A scalar in "CDF" lingo is a value with any number of records and
+        ;     a single, non-varying dimension (e.g. 1xN) ==> Make DIMS=1
+        ;   - An 1xN array would have N records and 1 dimension. An Nx1
+        ;     array (which in IDL appears as an N-element array with NDIMS=1)
+        ;     has one record, so is not record-varying.
+        ;   - Dimensions are ordered as [DIM3, DIM2, DIM1, RECS], with the
+        ;     number of records being the size of the last dimension.
         if n_elements(allocaterecs) eq 0 then begin
-            if nDims eq 1 $
-                then allocaterecs = 1 $
-                else allocaterecs = dims[nDims-1]
+            if nDims eq 0 then begin
+                allocaterecs = 1
+                dims         = 1
+            endif else if nDims eq 1 then begin
+                allocaterecs = 1
+            endif else begin
+                allocaterecs = dims[nDims-1]
+            endelse
+        
+        ;Single record
+        ;   - In IDL, an NxMx1 array has a shallow trailing dimension which
+        ;     is truncated automatically to appear as an NxM array.
+        ;   - If ALLOCATERECS=1, compensate for the last dimension being
+        ;     truncated.
+        endif else if allocaterecs eq 1 then begin
+            dims   = nDims eq 0 ? 1 : [dims, 1]
+            nDims += 1
         endif
         
         ;Dimensions
+        ;   - Z-Variables have dimensions
+        ;   - Dimensions are ordered as [DIM3, DIM2, DIM1, RECS], Take
+        ;     leading dimension sizes.
+        ;   - TODO: If only one record exists, then a variable can be scalar
+        ;           or Nx1 and still be record varying.
         if zvariable and n_elements(dimensions) eq 0 then begin
             if nDims gt 1 then dims = dims[0:nDims-2]
             if nDims le 1 then rec_novary = 1
         endif
         
         ;Assume dimensional variance.
+        ;   - Any dimension with size greater than 1 is dimensionally varying.
         if n_elements(dimVary) eq 0 then $
             if n_elements(dims) ne 0 then dimVary = dims gt 1
         
