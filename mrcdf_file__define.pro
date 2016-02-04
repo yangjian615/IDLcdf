@@ -130,6 +130,7 @@
 ;                           Added SHOW keyword to Get*Names methods. - MRA
 ;       2015/04/27  -   Global and variable attributes can now be accessed via
 ;                           _OverloadBracketsRightSide. Added the BOUNDS keyword to ::READ. - MRA
+;       2016/02/03  -   ::WriteVar can create 0-dimensional variables. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -2751,7 +2752,8 @@ ALLOCATERECS=allocaterecs, $
 COMPRESSION=compression, $
 CREATE=create, $
 CDF_TYPE=cdf_type, $
-DIMS=dims, $
+DIMVARY=dimvary, $
+DIMS=dimensions, $
 GZIP_LEVEL=gzip_level, $
 NUMELEM=numelem, $
 REC_NOVARY=rec_novary, $
@@ -2794,33 +2796,44 @@ ZVARIABLE=zvariable
         zvariable = n_elements(zvariable) eq 0 ? 1 : keyword_set(zvariable)
 
         ;Records
-        ;   - If a scalar value was given, assume no record variance (next)
-        ;   - Allocate a single record if a scalar was given (NDIMS=0)
-        ;   - A scalar in "CDF" lingo is a value with any number of records and
-        ;     a single, non-varying dimension (e.g. 1xN) ==> Make DIMS=1
-        ;   - An 1xN array would have N records and 1 dimension. An Nx1
-        ;     array (which in IDL appears as an N-element array with NDIMS=1)
-        ;     has one record, so is not record-varying.
+        ;   - If REC_NOVARY is set, at most 1 record is written.
+        ;   - If REC_NOVARY is set, only 1 record may be allocated.
+        ;   - If DIMVARY is set, on may be allocated.
+        ;   - If DIMVARY is undefined, the variable is 0-dimensional.
         ;   - Dimensions are ordered as [DIM3, DIM2, DIM1, RECS], with the
         ;     number of records being the size of the last dimension.
+        rec_novary = keyword_set(rec_novary)
         if n_elements(allocaterecs) eq 0 then begin
+            ;DATA is scalar
             if nDims eq 0 then begin
                 allocaterecs = 1
-                dims         = 1
+                void         = temporary(dims)
+                nDims        = 0
+            
+            ;DATA is Nx1
             endif else if nDims eq 1 then begin
-                allocaterecs = 1
+                ;N indicates dimension size
+                if rec_novary then begin
+                    allocaterecs = 1
+                
+                ;N indicates number of records
+                endif else begin
+                    allocaterecs = dims[0]
+                    void         = temporary(dims)
+                    nDims        = 0
+                endelse
+            
+            ;DATA is multi-dimensional
+            ;   - RECS is size of last dimension
             endif else begin
-                allocaterecs = dims[nDims-1]
+                if rec_novary then begin
+                    allocaterecs = 1
+                endif else begin
+                    allocaterecs = dims[nDims-1]
+                    dims         = dims[0:nDims-2]
+                    nDims       -= 1
+                endelse
             endelse
-        
-        ;Single record
-        ;   - In IDL, an NxMx1 array has a shallow trailing dimension which
-        ;     is truncated automatically to appear as an NxM array.
-        ;   - If ALLOCATERECS=1, compensate for the last dimension being
-        ;     truncated.
-        endif else if allocaterecs eq 1 then begin
-            dims   = nDims eq 0 ? 1 : [dims, 1]
-            nDims += 1
         endif
         
         ;Dimensions
@@ -2830,14 +2843,14 @@ ZVARIABLE=zvariable
         ;   - TODO: If only one record exists, then a variable can be scalar
         ;           or Nx1 and still be record varying.
         if zvariable and n_elements(dimensions) eq 0 then begin
-            if nDims gt 1 then dims = dims[0:nDims-2]
-            if nDims le 1 then rec_novary = 1
+            if nDims ge 1 then dimensions = dims
         endif
         
         ;Assume dimensional variance.
         ;   - Any dimension with size greater than 1 is dimensionally varying.
-        if n_elements(dimVary) eq 0 then $
-            if n_elements(dims) ne 0 then dimVary = dims gt 1
+        if n_elements(dimVary) eq 0 then begin
+            if n_elements(dimensions) ne 0 then dimVary = dims gt 1
+        endif
         
         ;Get the data type
         if n_elements(cdf_type) eq 0 then begin
@@ -2852,7 +2865,7 @@ ZVARIABLE=zvariable
 
         ;Create the variable
         self -> CreateVar, variable, cdf_type, dimVary, ALLOCATERECS=allocaterecs, $
-                           COMPRESSION=compression, DIMENSIONS=dims, $
+                           COMPRESSION=compression, DIMENSIONS=dimensions, $
                            GZIP_LEVEL=gzip_level, REC_NOVARY=rec_novary, $
                            NUMELEM=numelem
     endif

@@ -136,7 +136,7 @@ end
 
 
 ;+
-;   Provide information when the PRINT procedure is called.
+;   Provide information when the HELP procedure is called.
 ;-
 function MrCDF_Variable::_OverloadHelp, varname
     
@@ -153,8 +153,9 @@ function MrCDF_Variable::_OverloadHelp, varname
     selfStr = class + '   <' + strtrim(heapID, 2) + '>'
     
     ;Dimensions
+    ;   - Zero dimensional CDF files have DIMVAR=0
     if n_elements(*self.dimvar) eq 1 && *self.dimvar eq 0 $
-        then dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']' $
+        then dimStr = '[0, ' + strtrim(self.maxRec+1, 2) + ']' $
         else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
     
     ;Variable type
@@ -182,8 +183,9 @@ function MrCDF_Variable::_OverloadPrint
     endif
     
     ;Dimensions
+    ;   - Zero dimensional CDF files have DIMVAR=0
     if n_elements(*self.dimvar) eq 1 && *self.dimvar eq 0 $
-        then dimStr = '[1, ' + strtrim(self.maxRec+1, 2) + ']' $
+        then dimStr = '[0, ' + strtrim(self.maxRec+1, 2) + ']' $
         else dimStr = '[' + strjoin(strtrim(*self.dim, 2), ', ') + ', ' + strtrim(self.maxRec+1, 2) + ']' 
     
     ;Variable type
@@ -619,7 +621,7 @@ pro MrCDF_Variable::Parse
             tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
         endif
 
-        ;Add the attribute to the         
+        ;Add the attribute to the
         self.attributes -> Add, attrobj
     endfor
     
