@@ -122,7 +122,7 @@ TYPE=type
     ;Convert from IDL to CDF data type
     case idl_type of
         ;'UNDEFINED': 
-        'BYTE':     cdf_type = 'CDF_BYTE'
+        'BYTE':     cdf_type = 'CDF_UINT1'      ;NOT 'CDF_BYTE', which is a 1-byte signed integer
         'INT':      cdf_type = 'CDF_INT2'
         'LONG':     cdf_type = 'CDF_INT4'
         'FLOAT':    cdf_type = 'CDF_FLOAT'      ;=CDF_REAL4

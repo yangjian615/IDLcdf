@@ -87,6 +87,7 @@
 ; :History:
 ;   Modification History::
 ;       2014/04/30  -   Written by Matthew Argall
+;       2016/02/09  -   Handle cases when zero records were written to file. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -132,6 +133,7 @@ REC_INTERVAL = rec_interval, $
 OFFSET = offset, $
 COUNT = count, $
 INTERVAL = interval, $
+NRECS = nrecs, $
 STRING = string, $
 VARINQ = varinq
 	compile_opt idl2
@@ -148,32 +150,44 @@ VARINQ = varinq
 	;If the variable exists
 	if tf_has then begin
 		;Number of records -- read all
+		if n_elements(nrecs) eq 0 then nrecs = 0
 		cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
 		rec_count = var_info.maxrec + 1
 		
-		;Do not show annoying cdf_varget warnings
-		!Quiet = 1
+		;If no records have been written, then MAXREC=-1 and
+		;REC_COUNT=0. CDF_VarGet will complain when reading 0
+		;records, so undefine REC_COUNT. In this case,
+		;CDF_VarGet will return a pad value.
+		nrecs += rec_count
 		
-		;Get its data
-		cdf_varget, cdfID, theName, temp_data, $
-		            REC_COUNT    = rec_count, $
-		            REC_INTERVAL = rec_interval, $
-		            OFFSET       = offset, $
-		            COUNT        = count, $
-		            INTERVAL     = interval, $
-		            STRING       = string
-		
-		;Turn on normal warnings.
-		!Quiet = 0
-		
-		;Append it to other data?
-		varinq = cdf_varinq(cdfID, theName)
-		nDims  = n_elements(varinq.dim)
-
-		;Can only append if there is record variance
-		if varinq.recvar eq 'VARY' $
-			then data = MrConcatenate(data, temporary(temp_data), nDims+1) $
-			else data = temporary(temp_data)
+		;Get the data
+		if rec_count gt 0 then begin
+			;Do not show annoying cdf_varget warnings
+			!Quiet = 1
+			
+			;Get its data
+			cdf_varget, cdfID, theName, temp_data, $
+			            REC_COUNT    = rec_count, $
+			            REC_INTERVAL = rec_interval, $
+			            OFFSET       = offset, $
+			            COUNT        = count, $
+			            INTERVAL     = interval, $
+			            STRING       = string
+			
+			;Turn on normal warnings.
+			!Quiet = 0
+			
+			;Append it to other data?
+			varinq = cdf_varinq(cdfID, theName)
+			nDims  = n_elements(varinq.dim)
+	
+			;Can only append if there is record variance
+			if varinq.recvar eq 'VARY' $
+				then data = MrConcatenate(data, temporary(temp_data), nDims+1) $
+				else data = temporary(temp_data)
+		endif else begin
+			if n_elements(data) eq 0 then data = -1
+		endelse
 	endif else begin
 		message, string(FORMAT='(%"Variable \"%s\" does not have attribute \"%s\". Cannot read data")', $
 		                varname, depend)
@@ -223,6 +237,9 @@ end
 ;                               not exist.
 ;       INTERVAL:           in, optional, type=intarr, default=1 for each dimension
 ;                           Interval between values in each dimension.
+;       NRECS:              out, optional, type=intarr, default=1 for each dimension
+;                           Number of records read. If no records were written to the
+;                               file, then NRECS=0 and `DATA`=-1.
 ;       OFFSET:             in, optional, type=intarr, default=0 for each dimension
 ;                           Array indices within the specified record(s) at which to
 ;                               begin reading. OFFSET is a 1-dimensional array
@@ -253,6 +270,10 @@ end
 ;                               the data interval to be read.
 ;       VALIDATE:           in, optional, type=boolean, default=0
 ;                           If set, the CDF file will be validated when opened.
+;
+; :Returns:
+;       DATA:               Data associated with `VARNAME`. If zero records were
+;                               written to the file, then DATA=-1 and `NRECS`=0.
 ;-
 function MrCDF_nRead, files, varName, $
 ;INPUT
@@ -273,6 +294,7 @@ DEPEND_2=depend_2, $
 DEPEND_3=depend_3, $
 DATATYPE=datatype, $
 FILLVALUE=fillvalue, $
+NRECS=nRecs, $
 PADVALUE=padvalue, $
 STATUS=status
 	compile_opt strictarr
@@ -360,6 +382,7 @@ STATUS=status
 		                     OFFSET       = offset, $
 		                     COUNT        = count, $
 		                     INTERVAL     = interval, $
+		                     NRECS        = nRecs, $
 		                     STRING       = string, $
 		                     VARINQ       = data_inq
 

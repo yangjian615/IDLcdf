@@ -421,10 +421,16 @@ PADVALUE=padvalue
     endif
     
     ;Defaults
+    ;   - If no records have yet been written, then REC_COUNT<=0 will cause
+    ;     an error. Leaving REC_COUNT undefined will quietly cause CDF_VarGet
+    ;     to retrieve a pad value.
     single_value = keyword_set(single_value)
     if n_elements(string)    eq 0 then string       = 1
-    if n_elements(rec_count) eq 0 then rec_count    = self.maxrec + 1
     if n_elements(rec_start) eq 0 then rec_start    = 0
+    if n_elements(rec_count) eq 0 then if self.maxrec ge 0 then rec_count = self.maxrec + 1
+    
+    ;If no records have yet been written
+    if rec_count eq 0 then stop
     
     ;Get the file ID
     parentID = self.parent -> GetFileID()
