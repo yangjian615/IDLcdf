@@ -540,7 +540,10 @@ ZVARIABLE=zvariable
     
     ;Default to z-variables
     zvariable = (n_elements(zvariable) eq 0) ? 1 : keyword_set(zvariable)
-    if n_elements(dimensions) gt 0 then zvariable = 1
+    if n_elements(dimensions) gt 0 then begin
+        zvariable = 1
+        if n_elements(dimVary) eq 0 then dimVary = dimensions gt 1
+    endif
 
     ;Get the CDF data type
     if strpos(datatype, 'CDF') eq -1 $
@@ -2171,6 +2174,10 @@ end
 ;                               into CDF epoch values. PATTERN describes how the times
 ;                               should be parsed and accepts any pattern recognized by
 ;                               MrTimeParser.pro. Automatically sets `TIME`=1.
+;       NRECS:              out, optional, type=integer
+;                           Total number of records read. This is useful, for instance,
+;                               when no records have been written to a variable. In this
+;                               case, a single `PADVALUE` is returned and NRECS=0.
 ;       OFFSET:             in, optional, type=intarr, default=0 for each dimension
 ;                           Array indices within the specified record(s) at which to
 ;                               begin reading. OFFSET is a 1-dimensional array
@@ -2239,6 +2246,7 @@ DEPEND_1=depend_1, $
 DEPEND_2=depend_2, $
 DEPEND_3=depend_3, $
 FILLVALUE=fillvalue, $
+NRECS=nRecs, $
 PADVALUE=padvalue
     compile_opt strictarr
 
@@ -2369,7 +2377,7 @@ PADVALUE=padvalue
         data = varObj -> GetValue(COUNT=count, INTERVAL=interval, OFFSET=offset, $
                                   REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                                   REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
-                                  FILLVALUE=fillvalue, PADVALUE=padvalue)
+                                  FILLVALUE=fillvalue, NRECS=nRecs, PADVALUE=padvalue)
     endif else begin
         data = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
     endelse
@@ -3000,8 +3008,12 @@ ZVARIABLE=zvariable
     !Quiet   = self.quiet
 
     ;Write the data
-    cdf_varput, self.fileID, varName, data, COUNT=count, INTERVAL=interval, OFFSET=offset, $
-                REC_INTERVAL=rec_interval, REC_START=rec_start
+    cdf_varput, self.fileID, varName, data, $
+                COUNT        = count, $
+                INTERVAL     = interval, $
+                OFFSET       = offset, $
+                REC_INTERVAL = rec_interval, $
+                REC_START    = rec_start
     
     !Quiet = quiet_in
 end
