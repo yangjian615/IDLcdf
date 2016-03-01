@@ -320,9 +320,11 @@ STATUS=status
 		tf_IDs = 0B
 	
 		;Validate the files?
-		if validate then if MrCmpVersion('8.0') le 0 $
-			then cdf_set_validate, /YES $
-			else cdf_set_validate, /NO
+		if MrCmpVersion('8.0') le 0 then begin
+			if validate $
+				then cdf_set_validate, /YES $
+				else cdf_set_validate, /NO
+		endif
 	endelse
 
 ;-----------------------------------------------------
