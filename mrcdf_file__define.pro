@@ -540,7 +540,10 @@ ZVARIABLE=zvariable
     
     ;Default to z-variables
     zvariable = (n_elements(zvariable) eq 0) ? 1 : keyword_set(zvariable)
-    if n_elements(dimensions) gt 0 then zvariable = 1
+    if n_elements(dimensions) gt 0 then begin
+        zvariable = 1
+        if n_elements(dimVary) eq 0 then dimVary = dimensions gt 1
+    endif
 
     ;Get the CDF data type
     if strpos(datatype, 'CDF') eq -1 $
@@ -865,7 +868,7 @@ pro MrCDF_File::CopyVariableTo, variable, destObj
     ;Get the variable definition
     varObj -> GetProperty, CDF_TYPE    = cdf_type, $
                            COMPRESSION = compression, $
-                           DIMVAR      = dimvary, $
+                           DIMVAR      = dimvar, $
                            DIMENSIONS  = dimensions, $
                            GZIP_LEVEL  = gzip_level, $
                            MAXREC      = maxrec, $
@@ -875,13 +878,23 @@ pro MrCDF_File::CopyVariableTo, variable, destObj
 
     ;Does the variable exist in the destination? If not, create it.
     if destObj -> HasVar(varname) eq 0 then begin
-        destObj -> CreateVar, varname, cdf_type, dimvary, $
+        ;Convert values
+        if size(recvar, /TNAME) eq 'STRING' $
+            then rec_novary = strupcase(recvar) eq 'VARY' ? 0 : 1 $
+            else rec_novary = ~recvar
+        if n_elements(dimensions) eq 1 && dimensions eq 0 then begin
+            void = temporary(dimensions)
+            void = temporary(dimvar)
+        endif
+        
+        ;Create the variable
+        destObj -> CreateVar, varname, cdf_type, dimvar, $
                               ALLOCATERECS = maxrec+1, $
                               COMPRESSION  = compression, $
                               DIMENSIONS   = dimensions, $
                               GZIP_LEVEL   = gzip_level, $
                               NUMELEM      = numelem, $
-                              REC_NOVARY   = ~recvar, $
+                              REC_NOVARY   = rec_novary, $
                               ZVARIABLE    = zvariable
     endif
     
@@ -938,16 +951,110 @@ REC_START=rec_start
     endcase
 
     ;Get the data
-    data = varObj -> GetValue()
-    name = varObj -> GetName()
+    varObj -> GetProperty, MAXREC=maxrec
     
+    ;If no records have been written, avoid retrieving data
+    ;   - A pad value would otherwise be returned
+    if maxrec ge 0 then begin
+        data = varObj -> GetValue()
+        name = varObj -> GetName()
+    
+        ;Write the information
+        destObj -> WriteVar, name, data, $
+                             COUNT        = count, $
+                             INTERVAL     = interval, $
+                             OFFSET       = offset, $
+                             REC_INTERVAL = rec_interval, $
+                             REC_START    = rec_start
+    endif
+end
+
+
+;+
+;   Copy the a variable's definition to another CDF file. This includes its variable
+;   attributes, but not the variable data itself.
+;
+;   NOTE:
+;       The variable must not exist in the desination object.
+;
+; :Params:
+;       VARIABLE:           in, required, type=string/object
+;                           Name or CDF_Variable object of the variable to create in
+;                               the destination CDF file.
+;       DESTOBJ:            in, required, type=string
+;                           The MrCDF_File object to which the variable's data is copied.
+;-
+pro MrCDF_File::CopyVarDefTo, variable, destObj, $
+EXTEND_RECS=extend_recs
+    compile_opt strictarr
+    on_error, 2
+
+    ;File must be parsed first
+    if self.isParsed eq 0 then self -> ParseFile
+
+    ;Get the variable object
+    case size(variable, /TNAME) of
+        'OBJREF': varObj = variable
+        
+        'STRING': begin
+            varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+            if varCount eq 0 then varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+            if varCount eq 0 then $
+                message, 'Cannot find variable with name "' + variable + '".'
+            if obj_valid(varObj) eq 0 then $
+                message, 'Variable object invalid for "' + variable + '".'
+        endcase
+        
+        else: message, 'VARIABLE must be an attribute name or object.'
+    endcase
+
+;-------------------------------------------------------
+; Create Variable //////////////////////////////////////
+;-------------------------------------------------------
+    
+    ;Expand the variable by N records?
+    if n_elements(extend_recs) eq 0 then extend_recs = 0
+    
+    ;Get the variable's properties
+    varObj -> GetProperty, CDF_TYPE    = cdf_type, $
+                           COMPRESSION = compression, $
+                           DIMENSIONS  = dimensions, $
+                           DIMVAR      = dimvar, $
+                           GZIP_LEVEL  = gzip_level, $
+                           MAXREC      = maxrec, $
+                           NAME        = name, $
+                           NUMBER      = number, $
+                           NELEMENTS   = numelem, $
+                           RECVAR      = recvar, $
+                           ZVARIABLE   = zvariable
+    
+    ;Convert
+    if size(recvar, /TNAME) eq 'STRING' $
+        then rec_novary = strupcase(recvar) eq 'VARY' ? 0 : 1 $
+        else rec_novary = ~recvar
+    if n_elements(dimensions) eq 1 && dimensions eq 0 then begin
+        void = temporary(dimensions)
+        void = temporary(dimvar)
+    endif
+
     ;Write the information
-    destObj -> WriteVar, name, data, $
-                         COUNT        = count, $
-                         INTERVAL     = interval, $
-                         OFFSET       = offset, $
-                         REC_INTERVAL = rec_interval, $
-                         REC_START    = rec_start
+    destObj -> CreateVar, name, cdf_type, dimvar, $
+                          ALLOCATERECS = maxrec+1+extend_recs, $
+                          COMPRESSION  = compression, $
+                          DIMENSIONS   = dimensions, $
+                          GZIP_LEVEL   = gzip_level, $
+                          NUMELEM      = numelem, $
+                          REC_NOVARY   = rec_novary, $
+                          ZVARIABLE    = zvariable
+
+;-------------------------------------------------------
+; Copy Variable Attributes /////////////////////////////
+;-------------------------------------------------------
+    vAttNames = varObj -> GetAttrNames(COUNT=nAttrs)
+    
+    ;Copy variable attributes and their values
+    for i = 0, nAttrs-1 $
+        do self -> CopyVarAttrTo, vAttNames[i], destObj, VARNAME=name
 end
 
 
@@ -2067,6 +2174,10 @@ end
 ;                               into CDF epoch values. PATTERN describes how the times
 ;                               should be parsed and accepts any pattern recognized by
 ;                               MrTimeParser.pro. Automatically sets `TIME`=1.
+;       NRECS:              out, optional, type=integer
+;                           Total number of records read. This is useful, for instance,
+;                               when no records have been written to a variable. In this
+;                               case, a single `PADVALUE` is returned and NRECS=0.
 ;       OFFSET:             in, optional, type=intarr, default=0 for each dimension
 ;                           Array indices within the specified record(s) at which to
 ;                               begin reading. OFFSET is a 1-dimensional array
@@ -2135,6 +2246,7 @@ DEPEND_1=depend_1, $
 DEPEND_2=depend_2, $
 DEPEND_3=depend_3, $
 FILLVALUE=fillvalue, $
+NRECS=nRecs, $
 PADVALUE=padvalue
     compile_opt strictarr
 
@@ -2265,7 +2377,7 @@ PADVALUE=padvalue
         data = varObj -> GetValue(COUNT=count, INTERVAL=interval, OFFSET=offset, $
                                   REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
                                   REC_START=rec_start_out, STRING=string, CDF_TYPE=cdf_type, $
-                                  FILLVALUE=fillvalue, PADVALUE=padvalue)
+                                  FILLVALUE=fillvalue, NRECS=nRecs, PADVALUE=padvalue)
     endif else begin
         data = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
     endelse
@@ -2896,8 +3008,12 @@ ZVARIABLE=zvariable
     !Quiet   = self.quiet
 
     ;Write the data
-    cdf_varput, self.fileID, varName, data, COUNT=count, INTERVAL=interval, OFFSET=offset, $
-                REC_INTERVAL=rec_interval, REC_START=rec_start
+    cdf_varput, self.fileID, varName, data, $
+                COUNT        = count, $
+                INTERVAL     = interval, $
+                OFFSET       = offset, $
+                REC_INTERVAL = rec_interval, $
+                REC_START    = rec_start
     
     !Quiet = quiet_in
 end

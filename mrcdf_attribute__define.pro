@@ -407,17 +407,19 @@ ZVARIABLE=zvariable
 ; Specific Entries \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
     if numGEntries gt 0 then begin
-        cdf_type   = strarr(nEntries)
-        gEntryMask = bytarr(nEntries)
-    
+        cdf_type   = strarr(numGEntries)
+        gEntryMask = bytarr(numGEntries)
+
         ;Step through each entry
         for i = 0, numGEntries-1 do begin
             theEntry = entryNum[i]
         
             ;Make sure the entry number exists
-            if cdf_attexists(fileID, self.name, theEntry) eq 0 then $
+            if cdf_attexists(fileID, self.name, theEntry) eq 0 then begin
                 message, 'Entry number (' + strtrim(theEntry, 2) + ') does not exist ' + $
-                         'for global attribute "' + self.name + '".'
+                         'for global attribute "' + self.name + '".', /INFORMATIONAL
+                continue
+            endif
             
             ;Get the value
             cdf_attget, fileID, self.name, theEntry, attrValue, CDF_TYPE=type

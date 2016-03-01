@@ -388,6 +388,10 @@ end
 ;                               'CDF_UINT1', 'CDF_UINT2', 'CDF_UINT4'.
 ;       FILLVALUE:          out, optional, type=any
 ;                           Value used as a filler for missing data.
+;       NRECS:              out, optional, type=integer
+;                           Total number of records read. This is useful, for instance,
+;                               when no records have been written to a variable. In this
+;                               case, a single `PADVALUE` is returned and NRECS=0.
 ;       PADVALUE:           out, optional, type=any
 ;                           Value used to pad the data when more data is read than what
 ;                               exists in the file. It is possible that this value does
@@ -409,6 +413,7 @@ STRING=string, $
 ;OUTPUT
 CDF_TYPE=cdf_type, $
 FILLVALUE=fillvalue, $
+NRECS=nRecs, $
 PADVALUE=padvalue
     compile_opt strictarr
     
@@ -416,15 +421,28 @@ PADVALUE=padvalue
     if the_error ne 0 then begin
         catch, /CANCEL
         !Quiet = 0
+        count  = 0
         void = cgErrorMSG(/QUIET)
         return, -1
     endif
     
     ;Defaults
+    ;   - If no records have yet been written, then REC_COUNT<=0 will cause
+    ;     an error. Leaving REC_COUNT undefined will quietly cause CDF_VarGet
+    ;     to retrieve a pad value.
     single_value = keyword_set(single_value)
     if n_elements(string)    eq 0 then string       = 1
-    if n_elements(rec_count) eq 0 then rec_count    = self.maxrec + 1
     if n_elements(rec_start) eq 0 then rec_start    = 0
+    if n_elements(rec_count) eq 0 then rec_count = self.maxrec + 1
+    nRecs = rec_count
+
+    ;If no records have been written, then undefine REC_COUNT
+    ;   - Otherwise, will cause error "Array dimensions must be greater than 0."
+    ;   - With REC_COUNT=0, a PAD_VALUE will be returned.
+    if rec_count eq 0 then begin
+        MrPrintF, 'LogWarn', 'REC_COUNT=0. Returning PAD_VALUE.'
+        void = temporary(rec_count)
+    endif
     
     ;Get the file ID
     parentID = self.parent -> GetFileID()
@@ -447,7 +465,7 @@ PADVALUE=padvalue
     ;Output Keywords
     cdf_type  = self.cdf_type
     if ptr_valid(self.padvalue)      then padvalue  = *self.padvalue
-    if self  -> HasAttr('FILLVALUE') then fillvalue =  self -> GetAttrValue('FILLVAL')
+    if self  -> HasAttr('FILLVAL') then fillvalue =  self -> GetAttrValue('FILLVAL')
     
     return, value
 end
@@ -631,6 +649,28 @@ end
 
 
 ;+
+;   Set the number of pre-allocated records for the variable. This
+;   must be done before writing data to the variable.
+;
+; :Private:
+;
+; :Params:
+;       NRECS:      in, required, type=integer
+;                   Number of records to be initially written to the file.
+;-
+pro MrCDF_Variable::SetInitialRecs, nRecs
+	compile_opt strictarr
+	on_error, 2
+
+	;Get the CDF ID
+	fileID = self.parent -> GetFileID()
+
+	;Set initial recs
+	cdf_control, fileID, VARIABLE=self.name, SET_INITIALRECS=nrecs
+end
+
+
+;+
 ;   Set the compression type for the CDF variable. The file must be writable and compression
 ;   settings must be set before allocating or writing variable data. Individual
 ;   variables can be compressed differently from the rest of the CDF file.
@@ -694,10 +734,10 @@ GZIP_LEVEL=gzip_level
     ;Set the file compression
     fileID = self.parent -> GetFileID()
     cdf_compression, fileID, $
-                     VARIABLE        = self.name, $
-                     ZVARIABLE       = self.zvariable, $
-                     SET_COMPRESSION = comp, $
-                     SET_GZIP_LEVEL  = gzip_level
+                     VARIABLE           = self.name, $
+                     ZVARIABLE          = self.zvariable, $
+                     SET_COMPRESSION    = comp, $
+                     SET_VAR_GZIP_LEVEL = gzip_level
                      
     ;Set the object property
     self.compression = comp
