@@ -1123,10 +1123,10 @@ pro MrCDF_File::DelVarAttr, vAttrName, varname
 
     ;File must be parsed first
     if self.writeable eq 0 then $
-        message, 'Cannot delete global attribute because file is READ-ONLY.'
+        message, 'Cannot delete variable attribute because file is READ-ONLY.'
         
     ;Check to see if the global attribute exists
-    tf_Has = self -> HasAttr(gAttr, OBJECT=vAttrObj, /VARIABLE_SCOPE)
+    tf_Has = self -> HasAttr(vAttrName, OBJECT=vAttrObj)
     if tf_has eq 0 then message, 'Variable attribute name does not exist: "' + vAttrName + '".'
 
 ;-------------------------------------------------------
@@ -1138,18 +1138,19 @@ pro MrCDF_File::DelVarAttr, vAttrName, varname
         if ~tf_has then message, 'Variable name does not exist: "' + varname + '".'
         
         ;Get the variable number
-        varnum = varObj -> GetNumber()
-    
-        ;Delete the attribute from the variable
-        cdf_attdelete, self.fileID, vAttrName, varnum
+        varObj -> DelAttr, vAttrName
 
 ;-------------------------------------------------------
 ; Delete from File /////////////////////////////////////
 ;-------------------------------------------------------
     endif else begin
+        ;Remove attribute from object
+        ;   TODO: Remove the variable attribute object from each
+        ;         of the variables' containers.
         cdf_attdelete, self.fileID, vAttrName
-        self.attributes -> Remove, vAttrObj, /DESTROY
+        self.attrs -> Remove, vAttrObj, /DESTROY
     endelse
+    
 end
 
 

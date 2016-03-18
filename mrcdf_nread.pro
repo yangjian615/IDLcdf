@@ -154,14 +154,14 @@ VARINQ = varinq
 		cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
 		rec_count = var_info.maxrec + 1
 		
-		;If no records have been written, then MAXREC=-1 and
-		;REC_COUNT=0. CDF_VarGet will complain when reading 0
-		;records, so undefine REC_COUNT. In this case,
-		;CDF_VarGet will return a pad value.
-		nrecs += rec_count
-		
 		;Get the data
 		if rec_count gt 0 then begin
+			;If no records have been written, then MAXREC=-1 and
+			;REC_COUNT=0. CDF_VarGet will complain when reading 0
+			;records, so undefine REC_COUNT. In this case,
+			;CDF_VarGet will return a pad value.
+			nrecs += rec_count
+			
 			;Do not show annoying cdf_varget warnings
 			!Quiet = 1
 			
@@ -185,9 +185,7 @@ VARINQ = varinq
 			if varinq.recvar eq 'VARY' $
 				then data = MrConcatenate(data, temporary(temp_data), nDims+1) $
 				else data = temporary(temp_data)
-		endif else begin
-			if n_elements(data) eq 0 then data = -1
-		endelse
+		endif
 	endif else begin
 		message, string(FORMAT='(%"Variable \"%s\" does not have attribute \"%s\". Cannot read data")', $
 		                varname, depend)
@@ -255,10 +253,9 @@ end
 ;                           Named variable to receive the error status. If present, no
 ;                               error is issued and a value of -1 is returned.
 ;                                    0  -  No Error
-;                                    1  -  Unexpected error
-;                                    2  -  Trapped error
-;                                    3  -  No records found
-;                                    4  -  No records in time interval
+;                                    1  -  Unexpected trapped error
+;                                    2  -  One or more files contained zero records
+;                                    3  -  No records in time interval
 ;       STRING:             in, optional, type=boolean, default=0
 ;                           If set, "CDF_CHAR" and "CDF_UCHAR" data will be converted
 ;                               to strings. The are read from the file as byte-arrays.
@@ -352,6 +349,8 @@ STATUS=status
 ;-----------------------------------------------------
 ;Get the Data \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
+	;Total number of records read
+	nRecs = 0
 
 	;Step through each file
 	for i = 0, n_elements(files) - 1 do begin
@@ -384,9 +383,16 @@ STATUS=status
 		                     OFFSET       = offset, $
 		                     COUNT        = count, $
 		                     INTERVAL     = interval, $
-		                     NRECS        = nRecs, $
+		                     NRECS        = iRecs, $
 		                     STRING       = string, $
 		                     VARINQ       = data_inq
+		
+		if iRecs eq 0 then begin
+			if ~arg_present(status) then MrPrintF, 'LogWarn', 'No records in file for variable "' + varname + '".'
+			status = 2
+		endif else begin
+			nRecs += iRecs
+		endelse
 
 		;DEPEND_0
 		if arg_present(depend_0) || ( ~isTime && (tstart ne '' || tend ne '') ) then begin
@@ -461,7 +467,8 @@ STATUS=status
 		iselect = where(depend_0 ge t0 and depend_0 lt t1, nselect)
 		if nselect eq 0 then begin
 			;Set status
-			status = 4
+			status = 3
+			nRecs  = 0
 		
 			;Create message
 			epoch_range = MrCDF_Epoch_Encode([depend_0[0], depend_0[n_elements(depend_0)-1]], $
@@ -526,6 +533,9 @@ STATUS=status
 ;-----------------------------------------------------
 ; Return \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
+	;No data?
+	if nRecs eq 0 then data = -1
+
 	;Return column-major?
 	if col_major then begin
 		ndims = size(data, /N_DIMENSIONS)
