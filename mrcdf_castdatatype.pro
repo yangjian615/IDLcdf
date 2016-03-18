@@ -1,6 +1,6 @@
 ;+
 ; NAME:
-;       CDF_CastDataType
+;       MrCDF_CastDataType
 ;
 ;*****************************************************************************************
 ;   Copyright (c) 2014, Matthew Argall                                                   ;
@@ -130,12 +130,12 @@ TYPE=type
         ;'COMPLEX':
         'STRING':   cdf_type = 'CDF_UCHAR'
         ;'STRUCT':
-        'DCOMPLEX': cdf_type = 'CDF_LONG_EPOCH'
+        'DCOMPLEX': cdf_type = 'CDF_LONG_EPOCH' ;i.e. CDF_EPOCH16 (time)
         ;'POINTER':
         ;'OBJREF':
         'UINT':     cdf_type = 'CDF_UINT2'
         'ULONG':    cdf_type = 'CDF_UINT4'
-        'LONG64':   cdf_type = 'CDF_INT8'
+        'LONG64':   cdf_type = 'CDF_INT8'       ;should be CDF_EPOCH_TT2000 if time
         ;'ULONG64'
         else: message, 'IDL variable type "' + idl_type + '" cannot be converted to CDF type.'
     endcase

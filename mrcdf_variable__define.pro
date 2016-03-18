@@ -216,6 +216,41 @@ end
 
 
 ;+
+;   Determin if the variable has a particular attribute.
+;
+; :Params:
+;       ATTRNAME:           in, required, type=string
+;                           Name of the attr
+;
+; :Keywords:
+;       OBJECT:             out, optional, type=object
+;                           Attribute object associated with `ATTRNAME`.
+;
+; :Returns:
+;       TF_HAS:             Returns true (1) if the variable has the attribute and
+;                               false (0) if not.
+;-
+pro MrCDF_Variable::DelAttr, attrName, $
+OBJECT=object
+    compile_opt strictarr
+    on_error, 2
+
+    ;Get the attribute object
+    tf_has = self -> HasAttr(attrName, OBJECT=oAttrObj)
+    if ~tf_has then message, 'Attribute does not exist. Cannot delete.'
+
+    ;Delete from file
+    fileID = self.parent -> GetFileID()
+    cdf_attdelete, fileID, attrName, self.number, ZVARIABLE=self.zvariable
+
+    ;Remove from container
+    ;   - Do not destroy because the parent file is the
+    ;     source of variable attributes.
+    self.attributes -> Remove, oAttrObj
+end
+
+
+;+
 ;   Return the names of the attributes associated with this variable.
 ;
 ; :Keywords:
