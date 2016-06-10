@@ -1602,39 +1602,39 @@ STRING=string, $
 CDF_TYPE=cdf_type, $
 FILLVALUE=fillvalue, $
 PADVALUE=padvalue
-    compile_opt strictarr
-    on_error, 2
+	compile_opt strictarr
+	on_error, 2
 
-    ;File must be parsed first
-    if self.isParsed eq 0 then self -> ParseFile
+	;File must be parsed first
+	if self.isParsed eq 0 then self -> ParseFile
 
-    ;Get the variable object
-    case size(variable, /TNAME) of
-        'OBJREF': varObj = variable
-        'STRING': begin
-            varObj = self.zVars -> FindByName(variable, COUNT=varCount)
-            if varCount eq 0 then varObj = self.rVars -> FindByName(variable, COUNT=varCount)
-            if varCount eq 0 then $
-                message, 'Cannot find variable with name "' + variable + '".'
-            if obj_valid(varObj) eq 0 then $
-                message, 'Variable object invalid for "' + variable + '".'
-        endcase
-        else: message, 'VARIABLE must be an attribute name or object.'
-    endcase
-    
-    ;Get the data
-    data = varObj -> GetValue(INTERVAL=interval, $
-                              OFFSET=offset, $
-                              REC_COUNT=rec_count, $
-                              REC_INTERVAL=rec_interval, $
-                              REC_START=rec_start, $
-                              SINGLE_VALUE=single_value, $
-                              STRING=string, $
-                              CDF_TYPE=cdf_type, $
-                              FILLVALUE=fillvalue, $
-                              PADVALUE=padvalue)
-    
-    return, data
+	;Get the variable object
+	case size(variable, /TNAME) of
+		'OBJREF': varObj = variable
+		'STRING': begin
+			varObj = self.zVars -> FindByName(variable, COUNT=varCount)
+			if varCount eq 0 then varObj = self.rVars -> FindByName(variable, COUNT=varCount)
+			if varCount eq 0 then $
+				message, 'Cannot find variable with name "' + variable + '".'
+			if obj_valid(varObj) eq 0 then $
+				message, 'Variable object invalid for "' + variable + '".'
+		endcase
+		else: message, 'VARIABLE must be an variable name or object.'
+	endcase
+	
+	;Get the data
+	data = varObj -> GetValue(INTERVAL     = interval, $
+	                          OFFSET       = offset, $
+	                          REC_COUNT    = rec_count, $
+	                          REC_INTERVAL = rec_interval, $
+	                          REC_START    = rec_start, $
+	                          SINGLE_VALUE = single_value, $
+	                          STRING       = string, $
+	                          CDF_TYPE     = cdf_type, $
+	                          FILLVALUE    = fillvalue, $
+	                          PADVALUE     = padvalue)
+	
+	return, data
 end
 
 

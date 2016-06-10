@@ -107,7 +107,7 @@ VALIDATE=validate
 	endif
 
 	;Open the file and get info
-	cdfID    = cdf_open(filename)
+	cdfID    = cdf_open(filename, /READONLY)
 	cdf_info = cdf_inquire(cdfID)
 	count    = cdf_info.nvars + cdf_info.nzvars
 
