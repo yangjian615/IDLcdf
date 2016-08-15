@@ -54,6 +54,8 @@
 ;                           DEPEND_0 records read when searching for time interval. - MRA
 ;       2016/07/13  -   Read only one record for DEPEND_N variables if their record
 ;                           variance is 'NOVARY'. - MRA
+;       2016/07/21  -   DEPEND_0 is overwritten if passed in as a defined variable.
+;                           Fixes bug when matching values to a time interval. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -192,6 +194,12 @@ PADVALUE=padvalue
     
     ;Make sure a variable name was given, not a variable index number
     if MrIsA(varname, 'STRING') eq 0 then message, 'VARNAME must be a string.'
+    
+    ;DEPEND_0 must be undefined when passed in
+    if arg_present(depend_0) && n_elements(depend_0) gt 0 then begin
+        depend_0 = 0B
+        void     = temporary(depend_0)
+    endif
 
 ;-----------------------------------------------------
 ; Open File & Get MetaData \\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -320,7 +328,7 @@ PADVALUE=padvalue
         rec_start_out = rec_start
         rec_count     = rec_end - rec_start + 1
     endif
-stop
+
 ;-----------------------------------------------------
 ;Get the Data \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
