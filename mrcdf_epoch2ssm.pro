@@ -65,6 +65,7 @@
 ; :History:
 ;   Modification History::
 ;       2015-08-26  -   Written by Matthew Argall
+;       2016-07-06  -   Prevent array truncation if T_REF is a 1-element array. - MRA
 ;-
 function MrCDF_epoch2ssm, t_epoch, t_ref, $
 EPOCH_TYPE=epoch_type
@@ -80,7 +81,8 @@ EPOCH_TYPE=epoch_type
 		message, 'T_REF must be the same epoch type as T_EPOCH'
 
 	;Find midnight on T_REF
-	MrCDF_Epoch_Breakdown, t_ref, yr, mo, day
+	;   - Make sure T_REF is a scalar so that array truncation does not occur.
+	MrCDF_Epoch_Breakdown, t_ref[0], yr, mo, day
 	t0 = MrCDF_Epoch_Compute(yr, mo, day)
 
 	;Convert to seconds.

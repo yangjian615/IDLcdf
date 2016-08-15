@@ -52,6 +52,8 @@
 ;       2015/04/30  -   A CDF ID can be provided instead of a file name. - MRA
 ;       2015/05/13  -   Epoch type determined VARNAME is not the Epoch variable. All
 ;                           DEPEND_0 records read when searching for time interval. - MRA
+;       2016/07/21  -   DEPEND_0 is overwritten if passed in as a defined variable.
+;                           Fixes bug when matching values to a time interval. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -190,6 +192,12 @@ PADVALUE=padvalue
     
     ;Make sure a variable name was given, not a variable index number
     if MrIsA(varname, 'STRING') eq 0 then message, 'VARNAME must be a string.'
+    
+    ;DEPEND_0 must be undefined when passed in
+    if arg_present(depend_0) && n_elements(depend_0) gt 0 then begin
+        void = temporary(depend_0)
+        void = 0B
+    endif
 
 ;-----------------------------------------------------
 ; Open File & Get MetaData \\\\\\\\\\\\\\\\\\\\\\\\\\\
