@@ -52,6 +52,8 @@
 ;       2015/04/30  -   A CDF ID can be provided instead of a file name. - MRA
 ;       2015/05/13  -   Epoch type determined VARNAME is not the Epoch variable. All
 ;                           DEPEND_0 records read when searching for time interval. - MRA
+;       2016/07/13  -   Read only one record for DEPEND_N variables if their record
+;                           variance is 'NOVARY'. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -318,7 +320,7 @@ PADVALUE=padvalue
         rec_start_out = rec_start
         rec_count     = rec_end - rec_start + 1
     endif
-
+stop
 ;-----------------------------------------------------
 ;Get the Data \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
@@ -335,51 +337,94 @@ PADVALUE=padvalue
     endif else begin
         data = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
     endelse
-    
-    ;DEPEND_0
+
+;-----------------------------------------------------
+; DEPEND_0 \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     if arg_present(depend_0) then begin
+        ;Was the data read to get the record interval?
         if n_elements(depend_0) gt 0 then begin
             depend_0 = depend_0[*,rec_start_out:rec_start_out+rec_count-1:rec_interval]
-        endif else begin
-            cdf_attget_entry, cdfID, 'DEPEND_0', varname, entryType, dep0VarName, has_dep0
         
+        ;Read the data
+        endif else begin
+            ;Get the variable name of the DEPEND_0 attribute
+            cdf_attget_entry, cdfID, 'DEPEND_0', varname, entryType, dep0VarName, has_dep0
+
+            ;Does it exist?
             if has_dep0 then begin
+                ;Does it have record variance?
+                varinq = cdf_varinq(cdfID, dep0VarName)
+                rstart = varinq.recvar eq 'VARY' ? rec_start_out : 0
+                rcount = varinq.recvar eq 'VARY' ? rec_count     : 1
+                
+                ;Get the data
                 cdf_varget, cdfID, dep0VarName, depend_0, $
-                            REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                            REC_START=rstart, REC_COUNT=rcount, REC_INTERVAL=rec_interval, $
                             OFFSET=offset, COUNT=count, INTERVAL=interval
             endif
         endelse
     endif
-    
-    ;DEPEND_1
+
+;-----------------------------------------------------
+; DEPEND_1 \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     if arg_present(depend_1) then begin
+        ;Get the variable name of the DEPEND_1 attribute
         cdf_attget_entry, cdfID, 'DEPEND_1', varname, entryType, dep1VarName, has_dep1
         
+        ;Does it exist?
         if has_dep1 then begin
+            ;Does it have record variance?
+            varinq = cdf_varinq(cdfID, dep1VarName)
+            rstart = varinq.recvar eq 'VARY' ? rec_start_out : 0
+            rcount = varinq.recvar eq 'VARY' ? rec_count     : 1
+                
+            ;Get the data
             cdf_varget, cdfID, dep1VarName, depend_1, $
-                        REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                        REC_START=rstart, REC_COUNT=rcount, REC_INTERVAL=rec_interval, $
                         OFFSET=offset, COUNT=count, INTERVAL=interval
         endif
     endif
-    
-    ;DEPEND_2
+
+;-----------------------------------------------------
+; DEPEND_2 \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     if arg_present(depend_2) then begin
+        ;Get the variable name of the DEPEND_2 attribute
         cdf_attget_entry, cdfID, 'DEPEND_2', varname, entryType, dep2VarName, has_dep2
         
+        ;Does it exist?
         if has_dep2 then begin
+            ;Does it have record variance?
+            varinq = cdf_varinq(cdfID, dep2VarName)
+            rstart = varinq.recvar eq 'VARY' ? rec_start_out : 0
+            rcount = varinq.recvar eq 'VARY' ? rec_count     : 1
+                
+            ;Get the data
             cdf_varget, cdfID, dep2VarName, depend_2, $
-                        REC_START=rec_start_out, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                        REC_START=rstart, REC_COUNT=rcount, REC_INTERVAL=rec_interval, $
                         OFFSET=offset, COUNT=count, INTERVAL=interval
         endif
     endif
-    
-    ;DEPEND_3
+
+;-----------------------------------------------------
+; DEPEND_3 \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
     if arg_present(depend_3) then begin
+        ;Get the variable name of the DEPEND_3 attribute
         cdf_attget_entry, cdfID, 'DEPEND_3', varname, entryType, dep3VarName, has_dep3
         
+        ;Does it exist?
         if has_dep3 then begin
+            ;Does it have record variance?
+            varinq = cdf_varinq(cdfID, dep3VarName)
+            rstart = varinq.recvar eq 'VARY' ? rec_start_out : 0
+            rcount = varinq.recvar eq 'VARY' ? rec_count     : 1
+                
+            ;Get the data
             cdf_varget, cdfID, dep3VarName, depend_3, $
-                        REC_START=rec_start, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
+                        REC_START=rstart, REC_COUNT=rcount, REC_INTERVAL=rec_interval, $
                         OFFSET=offset, COUNT=count, INTERVAL=interval
         endif
     endif

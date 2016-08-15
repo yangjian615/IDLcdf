@@ -73,6 +73,7 @@
 ;                           Variable compression now possible. - MRA
 ;       2015/04/23  -   Moved compression information to from _OverloadHelp to _OverloadPrint. - MRA
 ;       2015/08/28  -   Turn off warning messages from CDF_VarGet. - MRA
+;       2016/07/13  -   Variables with record variance of NOVARY read one record. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -460,23 +461,29 @@ PADVALUE=padvalue
         void = cgErrorMSG(/QUIET)
         return, -1
     endif
-    
+
     ;Defaults
     ;   - If no records have yet been written, then REC_COUNT<=0 will cause
     ;     an error. Leaving REC_COUNT undefined will quietly cause CDF_VarGet
     ;     to retrieve a pad value.
     single_value = keyword_set(single_value)
     if n_elements(string)    eq 0 then string       = 1
-    if n_elements(rec_start) eq 0 then rec_start    = 0
-    if n_elements(rec_count) eq 0 then rec_count = self.maxrec + 1
-    nRecs = rec_count
+    rstart = n_elements(rec_start) gt 0 ? rec_start : 0
+    rcount = n_elements(rec_count) gt 0 ? rec_count : self.maxrec + 1
 
     ;If no records have been written, then undefine REC_COUNT
     ;   - Otherwise, will cause error "Array dimensions must be greater than 0."
     ;   - With REC_COUNT=0, a PAD_VALUE will be returned.
-    if rec_count eq 0 then begin
+    if rcount eq 0 then begin
         MrPrintF, 'LogWarn', 'REC_COUNT=0. Returning PAD_VALUE.'
-        void = temporary(rec_count)
+        void = temporary(rcount)
+    endif
+    
+    ;If record variance is NOVARY, set REC_START=0 and REC_COUNT=1
+    if self.recvar eq 'NOVARY' && (rstart ne 0 || rcount ne 1) then begin
+        MrPrintF, 'LogWarn', self.name + ': Record variance is "NOVARY". Setting REC_COUNT=1 and REC_START=0'
+        rstart = 0
+        rcount = 1
     endif
     
     ;Get the file ID
@@ -487,11 +494,11 @@ PADVALUE=padvalue
     
     ;Get the value(s)
     if single_value then begin
-        cdf_varget1, parentID, self.name, value, OFFSET=offset, REC_START=rec_start, STRING=string
+        cdf_varget1, parentID, self.name, value, OFFSET=offset, REC_START=rstart, STRING=string
     endif else begin
         cdf_varget, parentID, self.name, value, COUNT=count, INTERVAL=interval, $
-                    OFFSET=offset, REC_COUNT=rec_count, REC_INTERVAL=rec_interval, $
-                    REC_START=rec_start, STRING=string
+                    OFFSET=offset, REC_COUNT=rcount, REC_INTERVAL=rec_interval, $
+                    REC_START=rstart, STRING=string
     endelse
 
     ;Turn warnings back on

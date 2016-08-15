@@ -146,50 +146,50 @@ VARINQ = varinq
 		tf_has  = 1B
 		theName = varname
 	endelse
-
-	;If the variable exists
-	if tf_has then begin
-		;Number of records -- read all
-		if n_elements(nrecs) eq 0 then nrecs = 0
-		cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
-		rec_count = var_info.maxrec + 1
-		
-		;Get the data
-		if rec_count gt 0 then begin
-			;If no records have been written, then MAXREC=-1 and
-			;REC_COUNT=0. CDF_VarGet will complain when reading 0
-			;records, so undefine REC_COUNT. In this case,
-			;CDF_VarGet will return a pad value.
-			nrecs += rec_count
-			
-			;Do not show annoying cdf_varget warnings
-			!Quiet = 1
-			
-			;Get its data
-			cdf_varget, cdfID, theName, temp_data, $
-			            REC_COUNT    = rec_count, $
-			            REC_INTERVAL = rec_interval, $
-			            OFFSET       = offset, $
-			            COUNT        = count, $
-			            INTERVAL     = interval, $
-			            STRING       = string
-			
-			;Turn on normal warnings.
-			!Quiet = 0
-			
-			;Append it to other data?
-			varinq = cdf_varinq(cdfID, theName)
-			nDims  = n_elements(varinq.dim)
 	
-			;Can only append if there is record variance
-			if varinq.recvar eq 'VARY' $
-				then data = MrConcatenate(data, temporary(temp_data), nDims+1) $
-				else data = temporary(temp_data)
-		endif
-	endif else begin
-		message, string(FORMAT='(%"Variable \"%s\" does not have attribute \"%s\". Cannot read data")', $
-		                varname, depend)
-	endelse
+	;Variable must exist
+	if ~tf_has then message, string(varname, attrname, FORMAT='(%"Variable \"%s\" does not have attribute \"%s\". Cannot read data")' )
+	
+	;Keep track of all records read among all files
+	if n_elements(nrecs) eq 0 then nrecs = 0
+
+	;Read all records
+	;   - subintervals will be applied at a higher level.
+	cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
+	rec_count = var_info.maxrec + 1
+	
+	;Get the data
+	if rec_count gt 0 then begin
+		;If no records have been written, then MAXREC=-1 and
+		;REC_COUNT=0. CDF_VarGet will complain when reading 0
+		;records, so undefine REC_COUNT. In this case,
+		;CDF_VarGet will return a pad value.
+		nrecs += rec_count
+		
+		;Do not show annoying cdf_varget warnings
+		!Quiet = 1
+		
+		;Get its data
+		cdf_varget, cdfID, theName, temp_data, $
+		            REC_COUNT    = rec_count, $
+		            REC_INTERVAL = rec_interval, $
+		            OFFSET       = offset, $
+		            COUNT        = count, $
+		            INTERVAL     = interval, $
+		            STRING       = string
+		
+		;Turn on normal warnings.
+		!Quiet = 0
+		
+		;Append it to other data?
+		varinq = cdf_varinq(cdfID, theName)
+		nDims  = n_elements(varinq.dim)
+
+		;Can only append if there is record variance
+		if varinq.recvar eq 'VARY' $
+			then data = MrConcatenate(data, temporary(temp_data), nDims+1) $
+			else data = temporary(temp_data)
+	endif
 end
 
 
@@ -364,6 +364,8 @@ STATUS=status
 		endelse
 
 		;Get information about the variable
+		;   - Determine the padvalue to return
+		;   - Determine the datatype to return and so we do not read time data twice
 		if i eq 0 then begin
 			;Get CDF type
 			var_inq  = cdf_varinq(cdfID, varName)
@@ -395,6 +397,8 @@ STATUS=status
 		endelse
 
 		;DEPEND_0
+		;   - Do not read if VARNAME is the time variable
+		;   - Read if TSTART and TEND were given so that a record range can be determined
 		if arg_present(depend_0) || ( ~isTime && (tstart ne '' || tend ne '') ) then begin
 			MrCDF_nRead_GetData, depend_0, cdfID, varname, 'DEPEND_0', $
 			                     REC_INTERVAL = rec_interval, $
