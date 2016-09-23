@@ -83,7 +83,7 @@ EPOCH_TYPE=epoch_type
 
 	;Compute midight
 	MrCDF_Epoch_Breakdown, t_ref, yr, mo, day
-	t0 = MrCDF_Epoch_Compute(yr, mo, day)
+	t0 = MrCDF_Epoch_Compute(yr, mo, day, EPOCH_TYPE=epoch_type)
 
 	;Convert to epoch.
 	case epoch_type of

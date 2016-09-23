@@ -50,6 +50,7 @@
 ; :History:
 ;   Modification History::
 ;       2016-05-16  -   Written by Matthew Argall
+;       2016-08-22  -   Write epoch times as ISO date-time strings. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -94,22 +95,53 @@ VARFMT=varFMT
 ; Variable Format \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
 	
-	;Data formatting
-	fmt = oCDF -> GetVarAttrValue(vname, 'FORMAT')
+	;EPOCH data is converted to string
+	if stregex(cdf_type, '(EPOCH|TT2000)', /BOOLEAN) then begin
+		case 1 of
+			cdf_type eq 'CDF_EPOCH':       varFMT = 'a33'
+			cdf_type eq 'CDF_EPOCH_LONG':  varFMT = 'a24'
+			cdf_type eq 'CDF_TIME_TT2000': varFMT = 'a29'
+			else: message, 'Unexpected epoch type: "' + cdf_type + '".'
+		endcase
+		dataFMT = varFMT
 	
-	;Dissect format code
-	datatype = strmid(fmt, 0, 1)
-	datalen  = strsplit( strmid(fmt, 1), '.', /EXTRACT, COUNT=nDatalen)
-	width    = fix(datalen[0])
-	decimal  = nDataLen eq 2 ? fix(datalen[1]) : 0
+	;FORMAT given as attribute
+	endif else if oCDF -> VarHasAttr(vname, 'FORMAT') then begin
+		;Get the format code
+		fmt = oCDF -> GetVarAttrValue(vname, 'FORMAT')
 	
-	;Format code for header
-	;   - The width is often 1 number too short for IDL formatting
-	varFMT = string(datatype, width+1, decimal, FORMAT='(%"%s%i.%i")')
+		;Dissect format code
+		datatype = strmid(fmt, 0, 1)
+		datalen  = strsplit( strmid(fmt, 1), '.', /EXTRACT, COUNT=nDatalen)
+		width    = fix(datalen[0])
+		decimal  = nDataLen eq 2 ? fix(datalen[1]) : 0
+		
+		;Format code for header
+		;   - The width is often 1 number too short for IDL formatting
+		varFMT = string(datatype, width+1, decimal, FORMAT='(%"%s%i.%i")')
+		
+		;Format code for data
+		dataFMT = dims[0] eq 0 ? string(varFMT, FORMAT='(%", 2x, %s")') : $
+		                         string(dims, varFMT, FORMAT='(%", %i(2x, %s)")')
 	
-	;Format code for data
-	dataFMT = dims[0] eq 0 ? string(varFMT, FORMAT='(%", 2x, %s")') : $
-	                         string(dims, varFMT, FORMAT='(%", %i(2x, %s)")')
+	;Guess formatting
+	endif else begin
+		;Get a test value
+		case 1 of
+			oCDF -> VarHasAttr(vname, 'VALIDMIN'): test = oCDF -> GetVarAttrValue(vname, 'VALIDMIN')
+			oCDF -> VarHasAttr(vname, 'VALIDMAX'): test = oCDF -> GetVarAttrValue(vname, 'VALIDMAX')
+			oCDF -> VarHasAttr(vname, 'FILLVAL'):  test = oCDF -> GetVarAttrValue(vname, 'FILLVAL')
+			else: message, 'Cannot determine variable format.'
+		endcase
+		
+		;What type is the test value
+		case 1 of 
+			MrIsA(test, /INTEGER): varFMT = 'i' + string(alog10(test), FORMAT='(i0)')
+			MrIsA(test, 'FLOAT'):  varFMT = 'G12.4'
+			MrIsA(test, 'DOUBLE'): varFMT = 'G17.6'
+			else: message, 'Cannot determine variable format code.'
+		endcase
+	endelse
 
 ;-----------------------------------------------------
 ; Dimensions \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -123,7 +155,7 @@ VARFMT=varFMT
 ; Representative Value \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 ;-----------------------------------------------------
 	;Read a representative value from the data file
-	value = oCDF -> GetVarData(vname, /SINGLE_VALUE)
+	value = oCDF -> GetVarData(vname, REC_COUNT=1)
 	if MrIsA(value, /NUMBER) then value *= 0B
 
 ;-----------------------------------------------------
@@ -146,7 +178,9 @@ end
 ;                       Name of the CDF file to be converted.
 ;
 ; :Keywords:
-;       VARFILTER:      in, optional, type=string/strarr
+;       DIRECTORY:      in, optional, type=string, default=pwd
+;                       Directory in which to save the output files.
+;       VARFORMAT:      in, optional, type=string/strarr
 ;                       Filter for variable names. Only those variables that match
 ;                           the filter will be written to the ASCII file.
 ;
@@ -155,7 +189,8 @@ end
 ;                       Name(s) of the output data files. One file per Epoch variable.
 ;-
 function MrCDF_toASCII, filename, $
-VARFILTER=var_filter
+DIRECTORY=directory, $
+VARFORMAT=varformat
 	compile_opt strictarr
 	
 	catch, the_error
@@ -167,7 +202,8 @@ VARFILTER=var_filter
 		return, ''
 	endif
 	
-	if n_elements(var_filter) eq 0 then var_filter = '*'
+	if n_elements(directory) eq 0 then cd, CURRENT=directory
+	if n_elements(varformat) eq 0 then varformat = '*'
 
 ;-----------------------------------------------------
 ; Search for Variables \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -180,11 +216,11 @@ VARFILTER=var_filter
 	varnames = oCDF -> GetVarNames(COUNT=nVars)
 	
 	;Filter variables
-	if var_filter[0] ne '*' then begin
+	if varformat[0] ne '*' then begin
 		;Filter mask
 		tf_var = bytarr(nVars)
-		for i = 0, n_elements(var_filter)-1 do tf_var or= strmatch(varnames, var_filter[i])
-	
+		for i = 0, n_elements(varformat)-1 do tf_var or= strmatch(varnames, varformat[i])
+
 		;Variables that passed filter
 		iPass = where(tf_var, nVars)
 		if nVars eq 0 then message, 'No variables pass VARFILTER.'
@@ -226,7 +262,6 @@ VARFILTER=var_filter
 	f_out = strarr(nUniq)
 	
 	;Output directory
-	out_dir = file_dirname(filename)
 	fbase   = file_basename(filename)
 	fparts  = strsplit(fbase, '.', /EXTRACT, COUNT=count)
 	if count gt 1 then begin
@@ -238,9 +273,9 @@ VARFILTER=var_filter
 
 	;Create output file names
 	if nUniq eq 1 then begin
-		f_out = filepath(fbase + '.dat', ROOT_DIR=out_dir)
+		f_out = filepath(fbase + '.dat', ROOT_DIR=directory)
 	endif else begin
-		for i = 0, nUniq - 1 do f_out[i] = filepath(fbase + '_' + strtrim(i,2) + '.dat', ROOT_DIR=out_dir)
+		for i = 0, nUniq - 1 do f_out[i] = filepath(fbase + '_' + strtrim(i,2) + '.dat', ROOT_DIR=directory)
 	endelse
 
 ;-----------------------------------------------------
@@ -253,23 +288,24 @@ VARFILTER=var_filter
 		iMatch  = where(theEpoch eq theEpoch[iUniq[i]], nMatch)
 		theVars = varNames[iMatch]
 		varLen  = max(strlen(theVars))
-		
+
 		;Open the output file and write beginning of header
 		;   - One line per variable
 		;   - One line for the Epoch variable
 		;   - Three extra lines for header formatting
+		;   - One extra variable for the Epoch variable
 		openw, lun, f_out[i], /GET_LUN
-		printf, lun, nMatch+4, nMatch, FORMAT='(%"NHEADER=%i, NVARS=%i")'
+		printf, lun, nMatch+4, nMatch+1, FORMAT='(%"NHEADER=%i, NVARS=%i")'
 		printf, lun, 'VARIABLES:'
 
 		;Read the Epoch data and create a data structure
-		struct = create_struct( theEpoch[iUniq[i]], 0LL )
+		struct = create_struct( theEpoch[iUniq[i]], '' )
 		
 		;Write the header information for the epoch variable
 		;   - Epoch format codes can sometimes be not large enough (e.g. E15.8)
 		;   - Re-define the format code to be wide enough
 		hdrFMT = MrCDF_toASCII_header(lun, oCDF, theEpoch[iUniq[i]], varlen, VALUE=value)
-		hdrFMT = 'i16'
+		hdrFMT = 'a0'
 
 		;Step through each variable
 		for j = 0, nMatch - 1 do begin
@@ -294,10 +330,11 @@ VARFILTER=var_filter
 		endfor
 		
 		;Read the Epoch data and expand the data structure
-		temp       = oCDF -> Read(theEpoch[iUniq[i]])
-		nPts       = n_elements(temp)
-		struct     = replicate(struct, n_elements(temp))
-		struct.(0) = reform(temporary(temp))
+		epoch_temp = oCDF -> Read(theEpoch[iUniq[i]])
+		epoch_temp = MrCDF_Epoch_Encode(epoch_temp, EPOCH=3)
+		nPts       = n_elements(epoch_temp)
+		struct     = replicate(struct, nPts)
+		struct.(0) = reform(temporary(epoch_temp))
 
 		;Read the variable data
 		for j = 0, nMatch - 1 do struct.(j+1) = reform( oCDF -> Read(varNames[iMatch[j]]) )
