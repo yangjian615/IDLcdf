@@ -373,7 +373,7 @@ STATUS=status
 			
 			;Get pad value
 			cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=varname
-			if has_tag(var_info, 'PADVALUE') then padvalue = var_info.padvalue
+			if MrStruct_HasTag(var_info, 'PADVALUE') then padvalue = var_info.padvalue
 
 			;Is the variable an epoch time?
 			isTime = max(cdf_type eq ['CDF_EPOCH', 'CDF_EPOCH16', 'CDF_TIME_TT2000'])
@@ -388,7 +388,7 @@ STATUS=status
 		                     NRECS        = iRecs, $
 		                     STRING       = string, $
 		                     VARINQ       = data_inq
-		
+
 		if iRecs eq 0 then begin
 			if ~arg_present(status) then MrPrintF, 'LogWarn', 'No records in file for variable "' + varname + '".'
 			status = 2
