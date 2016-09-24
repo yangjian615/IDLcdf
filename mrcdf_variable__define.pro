@@ -776,10 +776,10 @@ GZIP_LEVEL=gzip_level
     ;Set the file compression
     fileID = self.parent -> GetFileID()
     cdf_compression, fileID, $
-                     VARIABLE           = self.name, $
-                     ZVARIABLE          = self.zvariable, $
-                     SET_COMPRESSION    = comp, $
-                     SET_VAR_GZIP_LEVEL = gzip_level
+                     VARIABLE            = self.name, $
+                     ZVARIABLE           = self.zvariable, $
+                     SET_VAR_COMPRESSION = comp, $
+                     SET_VAR_GZIP_LEVEL  = gzip_level
                      
     ;Set the object property
     self.compression = comp
