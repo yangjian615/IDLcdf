@@ -470,6 +470,7 @@ PADVALUE=padvalue
     if n_elements(string)    eq 0 then string       = 1
     rstart = n_elements(rec_start) gt 0 ? rec_start : 0
     rcount = n_elements(rec_count) gt 0 ? rec_count : self.maxrec + 1
+    nRecs  = rcount
 
     ;If no records have been written, then undefine REC_COUNT
     ;   - Otherwise, will cause error "Array dimensions must be greater than 0."

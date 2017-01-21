@@ -151,16 +151,23 @@ VARIABLE=variable
         else if n_elements(variable) gt 0 then value = self -> GetVarAttrValue(variable)
 
     ;Value -> String
+    ;   - Prevent IDL from converting byte data to strings
+    ;   - String(/PRINT) converts byte arrays to 1-element strings.
+    tf_byte = size(value, /TNAME) eq 'BYTE'
     case n_elements(value) of
         0: valueStr = ''
-        1: valueStr = strtrim(value, 2)
-        else: valueStr = '[' + strjoin(strtrim(value, 2), ', ') + ']'
+        1: valueStr = strtrim( string( value, PRINT=tf_byte ), 2)
+        else: begin
+            if tf_byte $
+                then valueStr = '[' + StrJoin(StrTrim(StrSplit(String(value, /PRINT), ' '), 2), ', ') + ']' $
+                else valueStr = '[' + strjoin(strtrim(string(value), 2), ', ') + ']'
+        endcase
     endcase
     
     ;Help string.
     outStr = string(self.number, self.name, self.scope, valueStr, $
-                    FORMAT='(i3, 2x, a-20, 2x, a14, 2x, a0)')
-    
+                    FORMAT='(i3, 2x, a-20, 2x, a14, 2x, a0)', /PRINT)
+
     return, outStr
 end
 
