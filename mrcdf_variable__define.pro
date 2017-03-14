@@ -888,7 +888,8 @@ end
 ;
 ; :Keywords:
 ;       CREATE:             in, optional, type=boolean, default=0
-;                           If set, the attribute will be created.
+;                           If set the attribute will be created. If the attribute already
+;                               exists, this keyword has no effect.
 ;       CDF_EPOCH:          in, optional, type=boolean, default=0
 ;                           If set, `VALUE` will be written as a "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE"
