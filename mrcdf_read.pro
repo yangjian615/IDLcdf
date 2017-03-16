@@ -56,6 +56,7 @@
 ;                           variance is 'NOVARY'. - MRA
 ;       2016/07/21  -   DEPEND_0 is overwritten if passed in as a defined variable.
 ;                           Fixes bug when matching values to a time interval. - MRA
+;       2017/03/16  -   Update to account for name changes in program library. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -229,7 +230,7 @@ PADVALUE=padvalue
     var_inq  = cdf_varinq(cdfID, varName)
     cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=varname
     datatype = var_inq.datatype
-    if has_tag(var_info, 'PADVALUE') then padvalue = var_info.padvalue
+    if MrStruct_HasTag(var_info, 'PADVALUE') then padvalue = var_info.padvalue
 
 ;-----------------------------------------------------
 ; Time Range? \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
