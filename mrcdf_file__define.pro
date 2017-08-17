@@ -1108,7 +1108,7 @@ end
 
 
 ;+
-;   Delete a global attribute from the file.
+;   Delete a variable attribute from the file.
 ;
 ; :Params:
 ;       VATTRNAME:          in, required, type=string
@@ -1168,10 +1168,14 @@ pro MrCDF_File::DelVariable, varname
     ;File must be parsed first
     if self.writeable eq 0 then $
         message, 'Cannot delete variable because file is READ-ONLY.'
-        
+
     ;Check to see if the global attribute exists
     tf_Has = self -> HasVar(varname, ISZVAR=isZVar, OBJECT=varObj)
     if tf_has eq 0 then message, 'Variable name does not exist: "' + varname + '".'
+    
+    ;Remove each of the variable attribute values
+    varAttrNames = varObj -> GetAttrNames(COUNT=nVarAttrNames)
+    for i = 0, nVarAttrNames-1 do varObj -> DelAttr, varAttrNames[i]
     
     ;Delete the variable
     cdf_vardelete, self.fileID, varname, ZVARIABLE=isZVar
@@ -1327,7 +1331,7 @@ end
 ; :Returns:
 ;       GATTRVALUE:         Value of the global attribute.
 ;-
-function MrCDF_File::GetGlobalAttrValue, gAttribute, $
+function MrCDF_File::GetGlobalAttrValue, gAttribute, entryNum, $
 CDF_TYPE=cdf_type
     compile_opt strictarr
     on_error, 2
@@ -1350,7 +1354,7 @@ CDF_TYPE=cdf_type
     endcase
 
     ;Get the value
-    value = attrObj -> GetGlobalAttrValue(CDF_TYPE=cdf_type)
+    value = attrObj -> GetGlobalAttrValue(entryNum, CDF_TYPE=cdf_type)
     
     return, value
 end
@@ -2668,7 +2672,8 @@ end
 ;
 ; :Keywords:
 ;       CREATE:             in, optional, type=boolean, default=0
-;                           If set, the attribute will be created.
+;                           If set, the attribute will be created. If the attribute
+;                               already exists, this keyword has no effect.
 ;       CDF_EPOCH:          in, optional, type=boolean, default=0
 ;                           If set, `VALUE` will be written as a datatype "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE" Can
@@ -2755,7 +2760,8 @@ end
 ;
 ; :Keywords:
 ;       CREATE:             in, optional, type=boolean, default=0
-;                           If set, the attribute will be created.
+;                           If set the attribute will be created. If the attribute already
+;                               exists, this keyword has no effect.
 ;       CDF_EPOCH:          in, optional, type=boolean, default=0
 ;                           If set, `VALUE` will be written as a "CDF_EPOCH"
 ;                               (i.e. "CDF_FLOAT4"). The default is "CDF_DOUBLE"

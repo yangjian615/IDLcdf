@@ -53,10 +53,10 @@
 ; :Author:
 ;   Matthew Argall::
 ;       University of New Hampshire
-;       Morse Hall, Room 113
+;       Morse Hall, Room 348
 ;       8 College Rd.
 ;       Durham, NH, 03824
-;       matthew.argall@wildcats.unh.edu
+;       matthew.argall@unh.edu
 ;
 ; :History:
 ;   Modification History::
@@ -76,6 +76,7 @@
 ;                           concise information. Can now retrieve the variable attribute
 ;                           entry mask. Cleared up confusions between numGEntries and
 ;                           maxGEntries. - MRA
+;       2017/03/16  -   ::GetGlobalAttrValue treats CDF_CHAR and CDF_UCHAR as equal. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -475,7 +476,9 @@ ZVARIABLE=zvariable
             endif
             
             ;Cannot combine values of different types
-            if theType ne '' && type ne theType then begin
+            ;   - Treat CDF_CHAR and CDF_UCHAR as the same
+            tf_diff = type ne theType && ~(stregex(type, 'CHAR', /BOOLEAN) && stregex(theType, 'CHAR', /BOOLEAN) )
+            if theType ne '' && tf_diff then begin
                 message, 'Multiple CDF types encountered.', /CONTINUE
                 message, '   Get global attribute values individually with gEntryNum.', /CONTINUE
                 message, '   Check keywords for useful information.', /CONTINUE
