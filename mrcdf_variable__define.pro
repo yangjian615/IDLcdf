@@ -914,7 +914,7 @@ CDF_EPOCH=cdf_epoch
 
     ;Does the variable have the attribute?
     if self -> HasAttr(attrName) eq 0 then begin
-        
+
         ;Does the file have the attribute?
         tf_has = self.parent -> HasAttr(attrName, OBJECT=attrObj)
         if tf_has then begin
