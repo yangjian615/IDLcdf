@@ -2093,6 +2093,7 @@ pro MrCDF_File::ParseFile
     
     ;Number of attributes
     globalAttrCount = attrCounts[0]
+    varAttrCount    = attrCounts[1]
     attrCount       = fileInfo.nAtts
     
     ;Number of variables
@@ -2149,6 +2150,23 @@ pro MrCDF_File::ParseFile
         ;Create a variable object
         self -> CreateVarObj, varinq.name
     endfor
+
+;-----------------------------------------------------
+; Parse Variable Attributes \\\\\\\\\\\\\\\\\\\\\\\\\\
+;-----------------------------------------------------
+;
+; It is possible for a variable attribute to exist without a
+; variable associated with it. Find them here
+;
+    nVarAttrs = self.attrs -> Count() - globalAttrCount
+    if nVarAttrs ne varAttrCount then begin
+        for i = 0, attrCount - 1 do begin
+            cdf_attinq, self.fileID, i, attrName, attrScope, maxEntry, maxZEntry
+            if stregex(attrScope, 'VARIABLE', /BOOLEAN) then begin
+                if maxEntry eq -1 && maxZEntry eq -1 then self -> CreateAttrObj, attrName
+            endif
+        endfor
+    endif
     
     self.isParsed = 1B
 end
