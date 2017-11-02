@@ -88,6 +88,10 @@
 ;   Modification History::
 ;       2014/04/30  -   Written by Matthew Argall
 ;       2016/02/09  -   Handle cases when zero records were written to file. - MRA
+;       2017/10/13  -   The Epoch variable of empty files has one record while data
+;                           variables have zero records. The number of records per
+;                           individual file and variable was not recorded and the single
+;                           epoch time was being appended to the output. Fixed. - MRA
 ;-
 ;*****************************************************************************************
 ;+
@@ -157,6 +161,7 @@ VARINQ = varinq
 	;   - subintervals will be applied at a higher level.
 	cdf_control, cdfID, GET_VAR_INFO=var_info, VARIABLE=theName
 	rec_count = var_info.maxrec + 1
+	nrecs     = rec_count
 	
 	;Get the data
 	if rec_count gt 0 then begin
@@ -164,7 +169,8 @@ VARINQ = varinq
 		;REC_COUNT=0. CDF_VarGet will complain when reading 0
 		;records, so undefine REC_COUNT. In this case,
 		;CDF_VarGet will return a pad value.
-		nrecs += rec_count
+
+;		nrecs += rec_count
 		
 		;Do not show annoying cdf_varget warnings
 		!Quiet = 1
@@ -388,27 +394,30 @@ STATUS=status
 		                     NRECS        = iRecs, $
 		                     STRING       = string, $
 		                     VARINQ       = data_inq
-
+		
+		;Empty variable
 		if iRecs eq 0 then begin
 			if ~arg_present(status) then MrPrintF, 'LogWarn', 'No records in file for variable "' + varname + '".'
 			status = 2
+		
+		;Read Records
 		endif else begin
 			nRecs += iRecs
+
+			;DEPEND_0
+			;   - Do not read if VARNAME is the time variable
+			;   - Read if TSTART and TEND were given so that a record range can be determined
+			if arg_present(depend_0) || ( ~isTime && (tstart ne '' || tend ne '') ) then begin
+				MrCDF_nRead_GetData, depend_0, cdfID, varname, 'DEPEND_0', $
+				                     REC_INTERVAL = rec_interval, $
+				                     OFFSET       = offset, $
+				                     COUNT        = count, $
+				                     INTERVAL     = interval, $
+				                     STRING       = string, $
+				                     VARINQ       = dep0_inq
+			endif
 		endelse
-
-		;DEPEND_0
-		;   - Do not read if VARNAME is the time variable
-		;   - Read if TSTART and TEND were given so that a record range can be determined
-		if arg_present(depend_0) || ( ~isTime && (tstart ne '' || tend ne '') ) then begin
-			MrCDF_nRead_GetData, depend_0, cdfID, varname, 'DEPEND_0', $
-			                     REC_INTERVAL = rec_interval, $
-			                     OFFSET       = offset, $
-			                     COUNT        = count, $
-			                     INTERVAL     = interval, $
-			                     STRING       = string, $
-			                     VARINQ       = dep0_inq
-		endif
-
+		
 		;DEPEND_1
 		if arg_present(depend_1) then begin
 			MrCDF_nRead_GetData, depend_1, cdfID, varname, 'DEPEND_1', $
@@ -441,7 +450,7 @@ STATUS=status
 			                     STRING       = string, $
 			                     VARINQ       = dep3_inq
 		endif
-	
+		
 		;Close the data file
 		if tf_open then begin
 			cdf_close, cdfID
